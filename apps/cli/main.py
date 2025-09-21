@@ -78,12 +78,29 @@ def scan(
     )
 
     try:
-        detections = run_glitch(str(path), tech)
+        raw_detections = run_glitch(str(path), tech)
     except Exception as exc:  # pragma: no cover - defensive logging
         console.print(f"[red]GLITCH execution failed: {exc}[/]")
         raise typer.Exit(code=2) from exc
 
-    console.log(f"GLITCH returned {len(detections)} detections")
+    category_a: list[Detection] = []
+    category_a_preds: list[Prediction] = []
+    category_b: list[Detection] = []
+
+    for det in raw_detections:
+        needs_postfilter = bool(det.evidence.pop("postfilter", False))
+        if needs_postfilter:
+            category_b.append(det)
+        else:
+            category_a.append(det)
+            category_a_preds.append(
+                Prediction(label="TP", score=1.0, rationale="glitch-accepted")
+            )
+
+    console.log(
+        "GLITCH returned %s detections (accepted=%s, postfilter=%s)"
+        % (len(raw_detections), len(category_a), len(category_b))
+    )
 
     try:
         model = load_model(postfilter)
@@ -93,10 +110,13 @@ def scan(
 
     effective_threshold = threshold if threshold is not None else model.default_threshold
     try:
-        predictions = predict(detections, path, threshold)
+        postfiltered = predict(category_b, path, threshold)
     except Exception as exc:  # pragma: no cover
         console.print(f"[red]Post-filtering failed: {exc}[/]")
         raise typer.Exit(code=2) from exc
+
+    detections = category_a + category_b
+    predictions = category_a_preds + postfiltered
 
     console.log(
         f"Post-filter complete: threshold={effective_threshold:.2f}"

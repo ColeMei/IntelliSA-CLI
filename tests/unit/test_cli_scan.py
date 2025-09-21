@@ -11,17 +11,20 @@ from packages.schema.models import Detection, Prediction
 runner = CliRunner()
 
 
-def _dummy_detection(**overrides) -> Detection:
+def _dummy_detection(*, postfilter: bool, rule_id: str = "HTTP_NO_TLS", **overrides) -> Detection:
+    evidence = {"glitch_code": "sec_https" if postfilter else "sec_empty_pass"}
+    if postfilter:
+        evidence["postfilter"] = True
     data = {
-        "rule_id": "HTTP_NO_TLS",
-        "smell": "http",
+        "rule_id": rule_id,
+        "smell": "http" if postfilter else "empty-password",
         "tech": "ansible",
         "file": "roles/web/tasks/main.yml",
         "line": 10,
-        "snippet": "get_url: url=http://example.com",
-        "message": "HTTP used without TLS",
-        "severity": "medium",
-        "evidence": {},
+        "snippet": "get_url: url=http://example.com" if postfilter else "password: """,
+        "message": "HTTP used without TLS" if postfilter else "Empty password detected",
+        "severity": "medium" if postfilter else "high",
+        "evidence": evidence,
     }
     data.update(overrides)
     return Detection(**data)
@@ -44,7 +47,7 @@ class DummyModel:
 
 
 def test_scan_writes_sarif_and_json(monkeypatch, tmp_path):
-    detection = _dummy_detection()
+    detection = _dummy_detection(postfilter=True)
     prediction = _dummy_prediction()
 
     monkeypatch.setattr("apps.cli.main.run_glitch", lambda path, tech: [detection])
@@ -77,12 +80,15 @@ def test_scan_writes_sarif_and_json(monkeypatch, tmp_path):
 
 
 def test_scan_returns_zero_when_no_blocking(monkeypatch, tmp_path):
-    detection = _dummy_detection(severity="medium")
-    prediction = _dummy_prediction(label="FP", score=0.1, rationale="score<threshold")
-
+    detection = _dummy_detection(postfilter=False, rule_id="EMPTY_PASSWORD")
     monkeypatch.setattr("apps.cli.main.run_glitch", lambda path, tech: [detection])
     monkeypatch.setattr("apps.cli.main.load_model", lambda name: DummyModel(name=name))
-    monkeypatch.setattr("apps.cli.main.predict", lambda dets, code_dir, threshold: [prediction])
+
+    def fake_predict(dets, code_dir, threshold):
+        assert dets == []
+        return []
+
+    monkeypatch.setattr("apps.cli.main.predict", fake_predict)
 
     out_path = tmp_path / "scan.sarif"
     result = runner.invoke(
@@ -97,5 +103,9 @@ def test_scan_returns_zero_when_no_blocking(monkeypatch, tmp_path):
         ],
     )
 
-    assert result.exit_code == 0
+    assert result.exit_code == 1
     assert out_path.exists()
+    sarif_payload = json.loads(out_path.read_text())
+    result_entry = sarif_payload["runs"][0]["results"][0]
+    assert result_entry["properties"]["prediction"] == "TP"
+    assert result_entry["message"]["text"].endswith("glitch-accepted")

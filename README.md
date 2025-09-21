@@ -25,6 +25,9 @@ python -m iacsec.models.fetch codet5p-220m
 iacsec scan --path ./examples/sample_repo --tech auto --format sarif --out artifacts/iacsec.sarif
 ````
 
+
+- Outputs from trees now include both high-precision GLITCH findings (empty passwords, invalid binds, missing default switches, etc.) and noisy smells filtered through `codet5p-220m`.
+
 ## Repo layout (pilot)
 
 ```
