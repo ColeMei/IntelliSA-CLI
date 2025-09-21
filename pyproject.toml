@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "iacsec"
+version = "0.1.0"
+description = "GLITCH + LLM post-filter for IaC security (pilot)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "Apache-2.0"} # adjust if needed
+authors = [{name="Cole", email="cole@example.com"}]
+
+dependencies = [
+  "typer>=0.12",
+  "pydantic>=2.7",
+  "rich>=13.7",
+  "safetensors>=0.4",
+  "ply>=3.11",
+  "torch>=2.2; platform_system!='Darwin' or platform_machine!='arm64'",
+  "onnxruntime>=1.18; extra == 'onnx'",  # optional
+  "pyyaml>=6.0",
+  "ruamel.yaml>=0.17",
+  "puppetparser>=0.2",
+]
+
+[project.scripts]
+iacsec = "apps.cli.main:app"
+
+[tool.setuptools]
+package-dir = {"" = ""}
+
+[tool.setuptools.packages.find]
+include = ["apps*", "packages*"]
+exclude = ["packages.glitch_core.tests*", "packages.glitch_core.docs*"]
+
+[tool.pytest.ini_options]
+addopts = "-q"

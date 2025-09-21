@@ -1,0 +1,8 @@
+models:
+  - name: codet5p-220m
+    version: "1.0.0"
+    uri: "https://example.org/models/codet5p-220m/model.safetensors"   # replace
+    sha256: "CHANGE_ME"
+    framework: "torch"
+    default_threshold: 0.62
+    labels: ["TP","FP"]

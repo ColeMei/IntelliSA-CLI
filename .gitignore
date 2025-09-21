@@ -1,0 +1,59 @@
+########################################
+# OS / Editor
+########################################
+.DS_Store
+.idea/
+.vscode/
+
+########################################
+# Python bytecode / cache
+########################################
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+########################################
+# Build & packaging outputs
+########################################
+dist/
+build/
+*.egg-info/
+.eggs/
+
+########################################
+# Virtual environments & local caches
+########################################
+.venv/
+/.cache/
+/.conda_envs/
+/.conda_pkgs/
+
+########################################
+# Test & coverage artifacts
+########################################
+/.pytest_cache/
+.coverage
+htmlcov/
+
+########################################
+# Models (large binary weights)
+########################################
+/models/*/model.safetensors
+
+########################################
+# Scan artifacts / outputs
+########################################
+artifacts/
+*.sarif
+# Keep golden files under tests
+!tests/e2e/golden/*.sarif
+!tests/e2e/golden/*.jsonl
+
+########################################
+# Vendored upstream (kept isolated, not tracked)
+########################################
+packages/glitch_core/
+examples/test_set/
+tmp_*.sarif
+tmp_*.jsonl

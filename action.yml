@@ -1,0 +1,25 @@
+name: "iacsec scan (pilot)"
+description: "Run GLITCH + LLM post-filter and emit SARIF"
+inputs:
+  path:
+    description: "Path to scan"
+    default: "."
+  tech:
+    description: "auto | ansible | chef | puppet"
+    default: "auto"
+  postfilter:
+    description: "Model name from models/registry.yaml"
+    default: "codet5p-220m"
+  sarif_out:
+    description: "Output SARIF path"
+    default: "iacsec.sarif"
+runs:
+  using: "composite"
+  steps:
+    - shell: bash
+      run: pipx install ".[dev]" || pip install -e .
+    - shell: bash
+      run: |
+        python -m iacsec.models.fetch "${{ inputs.postfilter }}"
+        iacsec scan --path "${{ inputs.path }}" --tech "${{ inputs.tech }}" \
+          --postfilter "${{ inputs.postfilter }}" --format sarif --out "${{ inputs.sarif_out }}"
