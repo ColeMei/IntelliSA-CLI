@@ -1,8 +1,8 @@
 models:
   - name: codet5p-220m
     version: "1.0.0"
-    uri: "https://example.org/models/codet5p-220m/model.safetensors"   # replace
-    sha256: "CHANGE_ME"
+    uri: "file:///Users/colemei/Library/Mobile Documents/com~apple~CloudDocs/01.Work/04.Master/Course/Research Program/Project/03.iacsec/models/codet5p-220m/stub.safetensors"
+    sha256: "6c5f7d7a5471d86419b080a0dcee59887cb6f73d479d5c14e87d66977ae2bd36"
     framework: "torch"
     default_threshold: 0.62
-    labels: ["TP","FP"]
+    labels: ['TP','FP']
