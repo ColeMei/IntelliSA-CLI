@@ -31,6 +31,8 @@ def test_sample_repo_scan_matches_golden(tmp_path, monkeypatch):
             "sarif",
             "--format",
             "json",
+            "--postfilter",
+            "codet5p-220m-stub",
         ],
         env={"IACSEC_MODEL_CACHE": str(tmp_path / "model_cache")},
     )

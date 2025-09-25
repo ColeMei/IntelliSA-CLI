@@ -1,4 +1,3 @@
-
 # Repository Development Report
 
 ## 1. Purpose and Context
@@ -9,13 +8,14 @@
 ## 2. Architecture Overview
 ### 2.1 Pipeline Composition
 
+- **Post-filter layer**: `packages/postfilter_llm/engine.py` now consumes the champion CodeT5p-220M metadata (config, tokenizer, thresholds) from `models/codet5p-220m/`, downloading weights from Hugging Face and falling back to the stub entry for lightweight tests.
 - **Detector layer (GLITCH)** now preserves all 11 upstream security rules. Five high-precision rules (admin-by-default, empty-password, invalid-bind, no-integrity-check, missing-default-switch) flow straight through with rationale `glitch-accepted`, while the four noisy ones (HTTP without TLS, weak crypto, hard-coded secret, suspicious comment) retain the post-filter.
 - **Sample repository** includes fixtures for both categories so golden artifacts validate post-filtered and automatically accepted findings.
 
 - **Detector layer (GLITCH)**: Vendored under `packages/glitch_core/` and surfaced via `packages/glitch_adapter/run_glitch.py`. The adapter normalizes raw GLITCH errors into our Pydantic `Detection` contract, mapping upstream rule codes through `rules_map.yaml` and deduplicating results.
 - **Schema boundary**: `packages/schema/models.py` defines immutable, validated `Detection` and `Prediction` models exactly as described in docs/SCHEMA.md, enforcing field names, severity enums, and score ranges so every downstream component receives predictable data.
-- **Post-filter layer**: `packages/postfilter_llm/engine.py` reads `models/registry.yaml`, downloads or copies weights (currently the stub SAFETensors included in-repo), verifies SHA256 hashes, and produces deterministic predictions. Determinism preserves reproducibility in line with ROADMAP goals.
-- **Exporter layer**: `packages/exporters/sarif.py` and `jsonl.py` convert detection/prediction pairs into the SARIF contract required by README quickstart and JSONL for pipelines. SARIF exports have stable timestamps to make goldens diff-friendly.
+- **Post-filter layer**: `packages/postfilter_llm/engine.py` reads `models/registry.yaml`, resolves the vendored champion weights (with a stub fallback for deterministic tests), verifies SHA256 hashes, and produces deterministic predictions. Determinism preserves reproducibility in line with ROADMAP goals.
+- **Exporter layer**: `packages/exporters/sarif.py`, `jsonl.py`, and `csv.py` convert detection/prediction pairs into SARIF/JSONL artifacts plus table-friendly CSV summaries. SARIF exports fix timestamps to keep goldens diff-friendly.
 - **CLI surface**: `apps/cli/main.py` implements the single Typer `scan` command described in README. Options mirror README/quickstart flags—`--tech`, `--format`, `--postfilter`—and orchestrate detector, post-filter, and exporters with clear exit codes (`0` clean, `1` findings, `2` error).
 
 ### 2.2 Supporting Assets
@@ -31,13 +31,15 @@
 ### 3.2 Schema Contracts
 - README and docs/SCHEMA.md require stable field names for `Detection` and `Prediction`. We enforced immutability (`frozen=True`) and `extra="forbid"` to prevent accidental expansion, safeguarding compatibility for exporters and downstream automation.
 
-### 3.3 Post-filter Stub
-- ROADMAP Stage 3 calls for deterministic evaluation. Until heavyweight weights are available, we deliver a deterministic hash-based score generator so tests remain stable and the pipeline wiring is proven. The stub uses the same registry pathway the real model will take, ensuring a seamless swap when actual weights arrive.
-- Model fetch verifies SHA256 from the registry, reflecting the roadmap’s focus on pinned, reproducible artifacts.
+### 3.3 Post-filter Models
+- The champion CodeT5p-220M checkpoint is published at https://huggingface.co/colemei/codet5p-220m-iac-security (metadata mirrored under `models/codet5p-220m/`), so production scans fetch the real encoder by default.
+- The registry retains a `codet5p-220m-stub` entry that reuses the same loader but emits deterministic hash-based scores for tests, keeping fixtures stable while exercising the identical code paths.
+- The loader verifies SHA256 digests from the registry for every entry, preserving pinned, reproducible artifacts.
 
 ### 3.4 Exporters
 - SARIF output adheres to the format quoted in README (tool driver metadata, rule IDs, location URIs). Setting a fixed conversion timestamp supports golden comparisons and caching scenarios.
 - JSONL exporter mirrors docs/SCHEMA.md’s “joined” structure (detection/prediction/threshold/model). We guard against mismatched iterables to surface errors early.
+- CSV exporter lists detections alongside empty file slots so practitioners can triage coverage in spreadsheets or dashboards.
 
 ### 3.5 CLI Behavior
 - README’s quickstart expects `iacsec scan --path … --format sarif --out …`. The Typer command honors those defaults and adds `--format json` and `--format table` for extra views, keeping exit codes consistent with README’s note (0 success, 1 findings, 2 error).
@@ -49,7 +51,7 @@
 - Full pytest (including vendored GLITCH tests) would require packaging the entire GLITCH suite; we document the limitation and focus CI on our maintained suites.
 
 ### 3.7 Automation & Action Design
-- The composite action in `action.yml` installs the package, triggers model fetch, and runs `iacsec scan`. It tolerates exit code 1 (findings) but fails on runtime errors, matching practical CI needs described in README (“non-blocking unless fail-on-high”).
+- The composite action in `action.yml` installs the package, relies on the vendored registry entries for weights, and runs `iacsec scan`. It tolerates exit code 1 (findings) but fails on runtime errors, matching practical CI needs described in README (“non-blocking unless fail-on-high”).
 - `.github/workflows/ci.yaml` runs unit + e2e tests, then exercises the composite action against the sample repo and uploads the SARIF artifact, providing an end-to-end validation path.
 
 ## 4. Usage Guide
@@ -66,6 +68,8 @@
    IACSEC_MODEL_CACHE=$PWD/artifacts/model_cache    iacsec --path examples/sample_repo --tech ansible      --format sarif --format json --out artifacts/iacsec.sarif
    ```
    Exit code `1` indicates findings; SARIF/JSONL appear under `artifacts/`.
+   Add `--debug-log artifacts/scan-debug.jsonl` when you need a JSONL trace of GLITCH detections, encoder inputs, predictions for troubleshooting.
+   A stub-warning indicates the HF deps (torch/transformers) are missing; install them before interpreting scores.
 3. **Tests**:
    ```bash
    pytest tests/unit
@@ -80,14 +84,14 @@
 - If onboarding new sample repos, add golden outputs under `tests/e2e/golden/` and extend the e2e suite for regression coverage.
 
 ## 6. Future Considerations (per ROADMAP)
-- **Model upgrades**: Swap deterministic stub for real encoder weights and integrate threshold tuning once available.
+- **Model upgrades**: Calibrate per-tech thresholds, explore quantized/ONNX variants, and document the procedure for refreshing the champion weights.
 - **Additional exporters**: The roadmap mentions SARIF and JSONL; future iterations could add Markdown triage reports or ONNX-based fast inference.
 - **ONNX runtime**: Stage 3 stretch goal includes ONNX for CPU speed; wiring would occur in `postfilter_llm/engine.py` with registry flags.
 - **Action enhancements**: Add optional upload to GitHub code scanning, or allow multi-repo scans via matrices.
 
 ## 7. Known Limitations
 - Vendored GLITCH tests are excluded; running `pytest` without filtering attempts to import `glitch` as an installable package and fails. Our CI intentionally targets maintained suites.
-- The stub model produces deterministic but artificial scores; production deployments must replace it with the champion encoder described in ROADMAP Stage 3.
+- The stub model remains for deterministic tests only; it emits artificial scores and should stay out of production pipelines.
 - The sample repo covers a single smell (HTTP without TLS); broaden coverage as more smells become critical.
 
 ---

@@ -44,6 +44,8 @@ def test_load_model_downloads_and_verifies(monkeypatch, tmp_path):
     assert handle.default_threshold == 0.5
     assert handle.path.exists()
     assert handle.path.read_bytes() == payload
+    assert handle.thresholds == {}
+    assert handle.tokenizer_dir is None
 
 
 def test_predict_is_deterministic(monkeypatch, tmp_path):

@@ -5,10 +5,12 @@
 This is a **pilot** repo whose goal is to ship a minimal, working tool that:
 - runs **GLITCH** locally,
 - passes detections through our **encoder-based LLM post-filter**,
-- emits **SARIF** (for GitHub code scanning) and **JSONL**,
+- emits **SARIF** (for GitHub code scanning), **JSONL**, and **CSV**,
 - is easy for AI agents to extend (GLITCH source is vendored in-repo).
 
 ## Quickstart
+
+Requires Python 3.10+.
 
 ```bash
 # 1) Create & activate venv
@@ -18,13 +20,21 @@ python -m venv .venv && source .venv/bin/activate
 pip install -U pip wheel
 pip install -e .
 
-# 3) Fetch the champion model weights (one-time; ~220M)
-python -m iacsec.models.fetch codet5p-220m
+# 3) Fetch the champion weights
+python -m iacsec.models.fetch codet5p-220m  # downloads weights from Hugging Face
 
 # 4) Scan a repo
 iacsec scan --path ./examples/sample_repo --tech auto --format sarif --out artifacts/iacsec.sarif
-````
+```
 
+Tip: When a registry entry downloads remote weights, set `IACSEC_MODEL_CACHE` to control where files land:
+
+```bash
+IACSEC_MODEL_CACHE=$PWD/artifacts/model_cache \
+  iacsec scan --path ./examples/sample_repo --tech auto --format sarif --out artifacts/iacsec.sarif
+```
+
+The champion encoder (`codet5p-220m`) references metadata under `models/`, while the actual weights download from Hugging Face on first use. The `codet5p-220m-stub` entry remains for deterministic tests.
 
 - Outputs from trees now include both high-precision GLITCH findings (empty passwords, invalid binds, missing default switches, etc.) and noisy smells filtered through `codet5p-220m`.
 
@@ -39,14 +49,13 @@ iacsec/
 │  ├─ glitch_core/             # 🚨 Vendored GLITCH source (upstream snapshot)
 │  ├─ glitch_adapter/          # Wraps glitch_core → schema.Detection
 │  ├─ postfilter_llm/          # Loads champion model, scores, thresholds
-│  └─ exporters/               # SARIF / JSONL / table
+│  └─ exporters/               # SARIF / JSONL / CSV / table
 ├─ models/
 │  ├─ registry.yaml            # Model index (name, version, uri, sha256, threshold)
-│  └─ codet5p-220m/            # (Optional) local cache of weights/tokenizer
+│  └─ codet5p-220m/            # Champion weights + tokenizer bundle
 ├─ docs/
 │  ├─ ROADMAP.md               # Background (Stage 1–3) + Why a tool (practice)
-│  ├─ SCHEMA.md                # JSON/SARIF contract
-│  └─ AI_AGENT_BRIEFING.md     # Step-by-step tasks for an AI agent
+│  └─ DEVELOPMENT_REPORT.md    # Current architecture + decisions
 ├─ examples/
 │  └─ sample_repo/             # Tiny IaC repo used by e2e tests
 ├─ tests/
@@ -71,9 +80,9 @@ iacsec/
    def run_glitch(path: str, tech: str) -> list[schema.Detection]: ...
    ```
 3. **Install** (`pip install -e .`) and run `iacsec scan --help` to verify CLI wiring.
-4. **Model fetch**: `python -m iacsec.models.fetch codet5p-220m` (checks `models/registry.yaml` and verifies sha256).
+4. **Models**: the champion encoder (`codet5p-220m`) ships in `models/`; keep the stub entry for deterministic tests or update `models/registry.yaml` if you swap weights.
 5. **E2E**: `pytest -q` should produce a SARIF under `tests/e2e/golden/` with a stable hash.
-6. **Action smoke test**: use `docs/AI_AGENT_BRIEFING.md#github-action-demo` to run a minimal workflow in this repo itself.
+6. **Action smoke test**: see `AGENTS.md` for CI pointers and workflows.
 
 ## CLI (pilot surface)
 
@@ -84,11 +93,15 @@ iacsec scan \
   --rules http,weak-crypto,hardcoded-secret,suspicious-comment \
   --postfilter codet5p-220m \
   --threshold 0.62 \
-  --format sarif,json \
+  --format sarif --format json --format csv \
   --out artifacts/iacsec.sarif
 ```
 
 **Exit codes**: `0` = ok, `1` = findings (non-blocking unless `--fail-on-high`), `2` = runtime error.
+
+Add `--debug-log artifacts/iacsec-debug.jsonl` to capture a JSONL trace of raw GLITCH detections, encoder inputs, and post-filter predictions for each run.
+
+If the CLI warns about falling back to the deterministic stub model, install `torch` and `transformers` so scans use the real codet5p-220m weights.
 
 ## Licensing
 

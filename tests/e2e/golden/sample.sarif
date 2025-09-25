@@ -118,7 +118,7 @@
           },
           "properties": {
             "prediction": "FP",
-            "score": 0.162769283984032,
+            "score": 0.20611938835047316,
             "evidence": {
               "glitch_code": "sec_hard_secr",
               "detail": "password:''"
@@ -145,7 +145,7 @@
           },
           "properties": {
             "prediction": "TP",
-            "score": 0.6938435425456008,
+            "score": 0.835327774432823,
             "evidence": {
               "glitch_code": "sec_https",
               "detail": "url:'http://insecure.example.com/app.tar.gz'"

@@ -3,17 +3,38 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import json
 import os
 import urllib.parse
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
 
 import yaml
 
+try:
+    import torch
+    from transformers import AutoTokenizer, T5ForSequenceClassification
+    try:
+        from safetensors.torch import load_file as load_safetensors
+    except Exception:  # pragma: no cover - safetensors optional fallback
+        load_safetensors = None
+    try:
+        from transformers import AutoConfig
+    except Exception:  # pragma: no cover - optional import
+        AutoConfig = None
+except Exception:  # pragma: no cover - transformers optional in test environments
+    torch = None
+    AutoTokenizer = None
+    T5ForSequenceClassification = None
+    load_safetensors = None
+    AutoConfig = None
+
 from packages.schema.models import Detection, Prediction
+
+_LOG = logging.getLogger(__name__)
 
 _REGISTRY_PATH = Path(__file__).resolve().parents[2] / "models" / "registry.yaml"
 _DEFAULT_CACHE = Path(os.environ.get("IACSEC_MODEL_CACHE", str(Path.home() / ".cache/iacsec")))
@@ -30,6 +51,8 @@ class ModelHandle:
     framework: str
     default_threshold: float
     labels: List[str]
+    tokenizer_dir: Optional[Path] = None
+    thresholds: Dict[str, float] = field(default_factory=dict)
 
     def as_dict(self) -> Dict[str, str]:
         return {
@@ -49,16 +72,31 @@ def load_model(name: str) -> ModelHandle:
 
     entry = registry[name]
     uri = entry["uri"]
-    target_path = _target_path(entry)
+    local_source = _resolve_local_source(uri)
     expected_sha = entry.get("sha256")
     should_verify = _is_hex_digest(expected_sha)
 
-    if not target_path.exists() or (should_verify and not _verify_sha(target_path, expected_sha)):  # type: ignore[arg-type]
-        _download_file(uri, target_path)
+    if local_source is not None:
+        target_path = local_source
         if should_verify and not _verify_sha(target_path, expected_sha):  # type: ignore[arg-type]
-            raise RuntimeError(
-                f"Checksum mismatch for model '{name}' after download."
-            )
+            raise RuntimeError(f"Checksum mismatch for model '{name}' (local source).")
+    else:
+        target_path = _target_path(entry)
+        if not target_path.exists() or (should_verify and not _verify_sha(target_path, expected_sha)):  # type: ignore[arg-type]
+            _download_file(uri, target_path)
+            if should_verify and not _verify_sha(target_path, expected_sha):  # type: ignore[arg-type]
+                raise RuntimeError(
+                    f"Checksum mismatch for model '{name}' after download."
+                )
+
+    thresholds = {}
+    thresholds_ref = entry.get("thresholds")
+    if thresholds_ref:
+        thresholds_path = _resolve_registry_path(str(thresholds_ref))
+        thresholds = yaml.safe_load(thresholds_path.read_text()) or {}
+
+    tokenizer_dir = entry.get("tokenizer")
+    resolved_tokenizer = _resolve_registry_path(tokenizer_dir) if tokenizer_dir else None
 
     handle = ModelHandle(
         name=name,
@@ -67,6 +105,8 @@ def load_model(name: str) -> ModelHandle:
         framework=str(entry.get("framework", "unknown")),
         default_threshold=float(entry.get("default_threshold", 0.5)),
         labels=list(entry.get("labels", [])),
+        tokenizer_dir=resolved_tokenizer,
+        thresholds={k: float(v) for k, v in thresholds.items()},
     )
 
     global _LOADED_MODEL
@@ -79,22 +119,52 @@ def predict(
     code_dir: Path,
     threshold: Optional[float],
 ) -> List[Prediction]:
-    """Produce deterministic predictions for detections."""
+    """Produce predictions for detections using the active model."""
 
     if _LOADED_MODEL is None:
         raise RuntimeError("No model loaded. Call load_model() before predict().")
 
     model = _LOADED_MODEL
-    effective_threshold = threshold if threshold is not None else model.default_threshold
+
+    if not detections:
+        return []
+
+    artifacts = _load_hf_artifacts(model)
+    if artifacts is None:
+        return _predict_statically(detections, code_dir, threshold, model)
+
+    tokenizer, classifier, device = artifacts
+    batch_size = int(os.environ.get("IACSEC_POSTFILTER_BATCH", "16")) or 16
+    texts = [_format_detection(det) for det in detections]
+
+    import torch
 
     predictions: List[Prediction] = []
-    for det in detections:
-        score = _stable_score(det, code_dir, model)
-        label = "TP" if score >= effective_threshold else "FP"
-        rationale = "score>=threshold" if label == "TP" else "score<threshold"
-        predictions.append(
-            Prediction(label=label, score=score, rationale=rationale)
+    for idx in range(0, len(texts), batch_size):
+        batch_texts = texts[idx : idx + batch_size]
+        encoding = tokenizer(
+            batch_texts,
+            padding=True,
+            truncation=True,
+            max_length=512,
+            return_tensors="pt",
         )
+        encoding = {k: v.to(device) for k, v in encoding.items()}
+        with torch.no_grad():
+            outputs = classifier(**encoding)
+            logits = outputs.logits
+            probs = torch.softmax(logits, dim=-1)
+
+        for det, prob in zip(detections[idx : idx + batch_size], probs):
+            positive_idx = _positive_index(classifier)
+            score = float(prob[positive_idx].item())
+            effective_threshold = _resolve_threshold(det, threshold, model)
+            label = "TP" if score >= effective_threshold else "FP"
+            rationale = "score>=threshold" if label == "TP" else "score<threshold"
+            predictions.append(
+                Prediction(label=label, score=score, rationale=rationale)
+            )
+
     return predictions
 
 
@@ -114,6 +184,104 @@ def _stable_score(det: Detection, code_dir: Path, model: ModelHandle) -> float:
     value = int.from_bytes(digest[:8], "big")
     return value / float(1 << 64)
 
+_HF_CACHE: Dict[str, tuple] = {}
+
+
+def _load_hf_artifacts(handle: ModelHandle):
+    if AutoTokenizer is None or T5ForSequenceClassification is None or torch is None:
+        return None
+    if handle.name.endswith("-stub") or handle.tokenizer_dir is None:
+        return None
+
+    cache_key = f"{handle.name}:{handle.version}:{handle.path}"  # unique per weight file
+    if cache_key in _HF_CACHE:
+        return _HF_CACHE[cache_key]
+
+    model_dir = handle.tokenizer_dir or handle.path.parent
+    tokenizer = AutoTokenizer.from_pretrained(str(model_dir))
+
+    classifier = None
+    if handle.path.exists() and handle.path.is_file():
+        if load_safetensors is not None and handle.path.suffix == ".safetensors":
+            state_dict = load_safetensors(str(handle.path))
+        else:  # pragma: no cover - fallback path
+            state_dict = torch.load(handle.path, map_location="cpu")
+        if AutoConfig is None:
+            raise RuntimeError("transformers AutoConfig unavailable; cannot load safetensors")
+        config = AutoConfig.from_pretrained(str(model_dir))
+        classifier = T5ForSequenceClassification(config)
+        missing, unexpected = classifier.load_state_dict(state_dict, strict=False)
+        if missing or unexpected:
+            _LOG.debug("Model state load with missing=%s unexpected=%s", missing, unexpected)
+    else:
+        classifier = T5ForSequenceClassification.from_pretrained(str(model_dir))
+
+    if not classifier.config.label2id or "TP" not in classifier.config.label2id:
+        classifier.config.label2id = {"FP": 0, "TP": 1}
+        classifier.config.id2label = {0: "FP", 1: "TP"}
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    classifier.to(device)
+    classifier.eval()
+
+    _HF_CACHE[cache_key] = (tokenizer, classifier, device)
+    return _HF_CACHE[cache_key]
+
+
+
+
+def _predict_statically(
+    detections: List[Detection],
+    code_dir: Path,
+    threshold: Optional[float],
+    model: ModelHandle,
+) -> List[Prediction]:
+    predictions: List[Prediction] = []
+    for det in detections:
+        effective_threshold = _resolve_threshold(det, threshold, model)
+        score = _stable_score(det, code_dir, model)
+        label = "TP" if score >= effective_threshold else "FP"
+        rationale = "score>=threshold" if label == "TP" else "score<threshold"
+        predictions.append(
+            Prediction(label=label, score=score, rationale=rationale)
+        )
+    return predictions
+
+
+def _format_detection(det: Detection) -> str:
+    parts = [
+        f"rule: {det.rule_id}",
+        f"tech: {det.tech}",
+        f"severity: {det.severity}",
+        f"message: {det.message}",
+        "snippet:",
+        det.snippet or "<empty>",
+    ]
+    if det.evidence:
+        try:
+            evidence_json = json.dumps(det.evidence, sort_keys=True)
+        except TypeError:
+            evidence_json = str(det.evidence)
+        parts.append(f"evidence: {evidence_json}")
+    return "\n".join(parts)
+
+
+def _positive_index(classifier: "T5ForSequenceClassification") -> int:
+    config = classifier.config
+    if config.label2id and "TP" in config.label2id:
+        return int(config.label2id["TP"])
+    return 1
+
+
+def _resolve_threshold(det: Detection, override: Optional[float], model: ModelHandle) -> float:
+    if override is not None:
+        return override
+    if model.thresholds:
+        tech_threshold = model.thresholds.get(det.tech)
+        if tech_threshold is not None:
+            return tech_threshold
+    return model.default_threshold
+
 
 def _load_registry() -> Dict[str, Dict[str, object]]:
     if not _REGISTRY_PATH.exists():
@@ -123,6 +291,26 @@ def _load_registry() -> Dict[str, Dict[str, object]]:
     for entry in data.get("models", []):
         entries[entry["name"]] = entry
     return entries
+
+
+def _resolve_registry_path(ref: Optional[str]) -> Optional[Path]:
+    if not ref:
+        return None
+    candidate = Path(ref)
+    if not candidate.is_absolute():
+        candidate = (_REGISTRY_PATH.parent / candidate).resolve()
+    return candidate
+
+
+def _resolve_local_source(uri: str) -> Optional[Path]:
+    parsed = urllib.parse.urlparse(uri)
+    if parsed.scheme in {"", "file"}:
+        path = parsed.path if parsed.scheme else uri
+        candidate = Path(urllib.parse.unquote(path))
+        if not candidate.is_absolute():
+            candidate = (_REGISTRY_PATH.parent / candidate).resolve()
+        return candidate
+    return None
 
 
 def _cache_dir() -> Path:
@@ -150,9 +338,9 @@ def _download_file(uri: str, target_path: Path) -> None:
     target_path.parent.mkdir(parents=True, exist_ok=True)
 
     if parsed.scheme in {"", "file"}:
-        source_path = Path(parsed.path)
-        if not source_path.exists():
-            raise FileNotFoundError(f"Model source file not found: {source_path}")
+        source_path = _resolve_local_source(uri)
+        if source_path is None or not source_path.exists():
+            raise FileNotFoundError(f"Model source file not found: {uri}")
         target_path.write_bytes(source_path.read_bytes())
         return
 
