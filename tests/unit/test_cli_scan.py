@@ -1,4 +1,3 @@
-
 import json
 from pathlib import Path
 
@@ -44,6 +43,14 @@ class DummyModel:
         self.path = Path("/tmp/model.bin")
         self.framework = "torch"
         self.labels = ["TP", "FP"]
+        self.thresholds = {}
+        self.tokenizer_dir = None
+
+
+def _touch_detection_file(tmp_path: Path) -> None:
+    target = tmp_path / "roles" / "web" / "tasks"
+    target.mkdir(parents=True, exist_ok=True)
+    (target / "main.yml").write_text("content")
 
 
 def test_scan_writes_sarif_and_json(monkeypatch, tmp_path):
@@ -53,6 +60,8 @@ def test_scan_writes_sarif_and_json(monkeypatch, tmp_path):
     monkeypatch.setattr("apps.cli.main.run_glitch", lambda path, tech: [detection])
     monkeypatch.setattr("apps.cli.main.load_model", lambda name: DummyModel(name=name))
     monkeypatch.setattr("apps.cli.main.predict", lambda dets, code_dir, threshold: [prediction])
+
+    _touch_detection_file(tmp_path)
 
     out_path = tmp_path / "iacsec.sarif"
     result = runner.invoke(
@@ -66,6 +75,8 @@ def test_scan_writes_sarif_and_json(monkeypatch, tmp_path):
             "sarif",
             "--format",
             "json",
+            "--format",
+            "csv",
         ],
     )
 
@@ -77,6 +88,10 @@ def test_scan_writes_sarif_and_json(monkeypatch, tmp_path):
     assert len(lines) == 1
     payload = json.loads(lines[0])
     assert payload["model"].startswith("codet5p-220m@")
+    csv_path = out_path.with_suffix(".csv")
+    csv_lines = csv_path.read_text().splitlines()
+    assert csv_lines[0] == "PATH,LINE,CATEGORY"
+    assert csv_lines[1] == "roles/web/tasks/main.yml,10,Use of HTTP without SSL/TLS"
 
 
 def test_scan_returns_zero_when_no_blocking(monkeypatch, tmp_path):
@@ -90,6 +105,8 @@ def test_scan_returns_zero_when_no_blocking(monkeypatch, tmp_path):
 
     monkeypatch.setattr("apps.cli.main.predict", fake_predict)
 
+    _touch_detection_file(tmp_path)
+
     out_path = tmp_path / "scan.sarif"
     result = runner.invoke(
         app,
@@ -100,6 +117,8 @@ def test_scan_returns_zero_when_no_blocking(monkeypatch, tmp_path):
             str(out_path),
             "--format",
             "sarif",
+            "--format",
+            "csv",
         ],
     )
 
@@ -109,3 +128,7 @@ def test_scan_returns_zero_when_no_blocking(monkeypatch, tmp_path):
     result_entry = sarif_payload["runs"][0]["results"][0]
     assert result_entry["properties"]["prediction"] == "TP"
     assert result_entry["message"]["text"].endswith("glitch-accepted")
+    csv_path = out_path.with_suffix(".csv")
+    csv_lines = csv_path.read_text().splitlines()
+    assert csv_lines[0] == "PATH,LINE,CATEGORY"
+    assert csv_lines[1] == "roles/web/tasks/main.yml,10,Empty password"

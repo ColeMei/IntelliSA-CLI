@@ -249,21 +249,9 @@ def _predict_statically(
 
 
 def _format_detection(det: Detection) -> str:
-    parts = [
-        f"rule: {det.rule_id}",
-        f"tech: {det.tech}",
-        f"severity: {det.severity}",
-        f"message: {det.message}",
-        "snippet:",
-        det.snippet or "<empty>",
-    ]
-    if det.evidence:
-        try:
-            evidence_json = json.dumps(det.evidence, sort_keys=True)
-        except TypeError:
-            evidence_json = str(det.evidence)
-        parts.append(f"evidence: {evidence_json}")
-    return "\n".join(parts)
+    """Prepare encoder input using only the GLITCH-highlighted snippet."""
+
+    return det.snippet or "<empty>"
 
 
 def _positive_index(classifier: "T5ForSequenceClassification") -> int:

@@ -18,11 +18,15 @@ dependencies = [
   "safetensors>=0.4",
   "ply>=3.11",
   "torch>=2.2; platform_system!='Darwin' or platform_machine!='arm64'",
-  "onnxruntime>=1.18; extra == 'onnx'",  # optional
   "pyyaml>=6.0",
   "ruamel.yaml>=0.17",
   "puppetparser>=0.2",
   "transformers>=4.45",
+]
+
+[project.optional-dependencies]
+onnx = [
+  "onnxruntime>=1.18",
 ]
 
 [project.scripts]

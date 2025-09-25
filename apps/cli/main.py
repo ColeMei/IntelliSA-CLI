@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Iterable, List, Optional, Sequence
+from typing import Iterable, List, Optional, Sequence, Set
 
 import typer
 from rich.console import Console
@@ -12,6 +12,7 @@ from rich.table import Table
 
 from packages.exporters.jsonl import write_jsonl
 from packages.exporters.sarif import to_sarif
+from packages.exporters.csv import write_csv, Row as CSVRow
 from packages.glitch_adapter.run_glitch import run_glitch
 from packages.postfilter_llm.engine import ModelHandle, load_model, predict
 from packages.schema.models import Detection, Prediction
@@ -19,9 +20,28 @@ from packages.schema.models import Detection, Prediction
 app = typer.Typer(add_completion=False)
 console = Console()
 
+CATEGORY_LABELS = {
+    "HTTP_NO_TLS": "Use of HTTP without SSL/TLS",
+    "WEAK_CRYPTO": "Weak cryptography algorithm",
+    "HARDCODED_SECRET": "Hard-coded secret",
+    "SUSPICIOUS_COMMENT": "Suspicious comment",
+    "ADMIN_DEFAULT": "Admin by default",
+    "EMPTY_PASSWORD": "Empty password",
+    "INVALID_BIND": "Unrestricted IP Address",
+    "NO_INTEGRITY_CHECK": "No integrity check",
+    "MISSING_DEFAULT_SWITCH": "Missing default switch",
+}
+
+_FILE_EXTENSIONS = {
+    "ansible": {".yml", ".yaml"},
+    "chef": {".rb"},
+    "puppet": {".pp"},
+}
+
+
 _VALID_TECH = {"auto", "ansible", "chef", "puppet"}
-_VALID_FORMATS = {"sarif", "json", "table"}
-_DEFAULT_RULES = "http,weak-crypto,hardcoded-secret,suspicious-comment"
+_VALID_FORMATS = {"sarif", "json", "table", "csv"}
+_DEFAULT_RULES = "http,weak-crypto,hardcoded-secret,suspicious-comment,admin-by-default,empty-password,invalid-bind,no-integrity-check,missing-default-switch"
 
 
 def _normalize_formats(values: Sequence[str]) -> List[str]:
@@ -123,13 +143,15 @@ def scan(
         f" TP={sum(1 for p in predictions if p.label == 'TP')}"
     )
 
-    _export_results(
+    outputs = _export_results(
         detections,
         predictions,
         formats=formats,
         out=out,
         model=model,
         threshold=effective_threshold,
+        scan_root=path,
+        tech=tech,
     )
 
     blocking = _blocking_findings(detections, predictions, fail_on_high)
@@ -140,6 +162,58 @@ def scan(
     console.print("[green]No blocking findings identified[/]")
     raise typer.Exit(code=0)
 
+
+
+def _collect_candidate_files(root: Path, tech: str) -> Set[str]:
+    resolved_root = root.resolve()
+    if resolved_root.is_file():
+        return {resolved_root.name}
+
+    if tech == "auto":
+        extensions = set().union(*_FILE_EXTENSIONS.values())
+    else:
+        extensions = set()
+        if tech in _FILE_EXTENSIONS:
+            extensions.update(_FILE_EXTENSIONS[tech])
+        if not extensions:
+            extensions = set().union(*_FILE_EXTENSIONS.values())
+
+    candidates: Set[str] = set()
+    if not resolved_root.exists():
+        return candidates
+
+    for path in resolved_root.rglob("*"):
+        if not path.is_file():
+            continue
+        if extensions and path.suffix.lower() not in extensions:
+            continue
+        try:
+            relative = path.relative_to(resolved_root)
+            candidates.add(relative.as_posix())
+        except ValueError:
+            candidates.add(path.name)
+    return candidates
+
+
+def _build_csv_rows(
+    root: Path,
+    tech: str,
+    detections: List[Detection],
+) -> List[CSVRow]:
+    rows: List[CSVRow] = []
+    seen_files: Set[str] = set()
+
+    for det in detections:
+        category = CATEGORY_LABELS.get(det.rule_id, det.message)
+        rows.append((det.file, det.line, category))
+        seen_files.add(det.file)
+
+    for candidate in sorted(_collect_candidate_files(root, tech)):
+        if candidate not in seen_files:
+            rows.append((candidate, 0, "none"))
+
+    rows.sort(key=lambda row: (row[0], row[1]))
+    return rows
 
 def _blocking_findings(
     detections: Iterable[Detection],
@@ -166,9 +240,13 @@ def _export_results(
     out: Path,
     model: ModelHandle,
     threshold: float,
-) -> None:
+    scan_root: Path,
+    tech: str,
+) -> dict[str, Path]:
     fmt_set = set(formats)
     model_descriptor = f"{model.name}@{model.version}"
+
+    outputs: dict[str, Path] = {}
 
     if "sarif" in fmt_set:
         sarif_obj = to_sarif(
@@ -181,12 +259,18 @@ def _export_results(
         with out.open("w", encoding="utf-8") as handle:
             json.dump(sarif_obj, handle, indent=2)
             handle.write("\n")
-        console.print(f"[blue]SARIF written to[/] {out}")
+        outputs["sarif"] = out
 
     if "json" in fmt_set:
         json_path = out if out.suffix == ".jsonl" and fmt_set == {"json"} else out.with_suffix(".jsonl")
         write_jsonl(json_path, detections, predictions, threshold, model_descriptor)
-        console.print(f"[blue]JSONL written to[/] {json_path}")
+        outputs["json"] = json_path
+
+    if "csv" in fmt_set:
+        csv_path = out if out.suffix == ".csv" and fmt_set == {"csv"} else out.with_suffix(".csv")
+        rows = _build_csv_rows(scan_root, tech, detections)
+        write_csv(csv_path, rows)
+        outputs["csv"] = csv_path
 
     if "table" in fmt_set:
         table = Table(title="iacsec findings")
@@ -206,9 +290,7 @@ def _export_results(
             )
         console.print(table)
 
-
-
-
+    return outputs
 
 if __name__ == "__main__":  # pragma: no cover - manual execution
     app()

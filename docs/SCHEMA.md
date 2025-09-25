@@ -13,7 +13,7 @@
   "severity": "medium",
   "evidence": {"keys": ["url"], "values": ["http://example.com/app.tar.gz"]}
 }
-````
+```
 
 ## Prediction (post-filter output per detection)
 

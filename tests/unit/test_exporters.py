@@ -6,6 +6,7 @@ import pytest
 
 from packages.exporters.jsonl import write_jsonl
 from packages.exporters.sarif import to_sarif
+from packages.exporters.csv import write_csv
 from packages.schema.models import Detection, Prediction
 
 
@@ -75,3 +76,13 @@ def test_to_sarif_structure():
     assert result["locations"][0]["physicalLocation"]["artifactLocation"]["uri"] == "roles/web/tasks/main.yml"
     assert result["properties"]["prediction"] == "TP"
     assert "invocationTimeUtc" in run["conversion"]
+
+
+def test_write_csv(tmp_path):
+    rows = [("file.yml", 10, "HTTP"), ("other.yml", 0, "none")]
+    out = tmp_path / "out.csv"
+    write_csv(out, rows)
+    content = out.read_text().splitlines()
+    assert content[0] == "PATH,LINE,CATEGORY"
+    assert content[1] == "file.yml,10,HTTP"
+    assert content[2] == "other.yml,0,none"
