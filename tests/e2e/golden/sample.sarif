@@ -6,7 +6,7 @@
       "tool": {
         "driver": {
           "name": "iacsec",
-          "version": "1.0.0",
+          "version": "0.0.0",
           "rules": [
             {
               "id": "EMPTY_PASSWORD",
@@ -118,7 +118,7 @@
           },
           "properties": {
             "prediction": "FP",
-            "score": 0.20611938835047316,
+            "score": 0.300635321773899,
             "evidence": {
               "glitch_code": "sec_hard_secr",
               "detail": "password:''"
@@ -145,7 +145,7 @@
           },
           "properties": {
             "prediction": "TP",
-            "score": 0.835327774432823,
+            "score": 0.5767085256228023,
             "evidence": {
               "glitch_code": "sec_https",
               "detail": "url:'http://insecure.example.com/app.tar.gz'"
