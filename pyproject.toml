@@ -32,9 +32,6 @@ onnx = [
 [project.scripts]
 iacsec = "apps.cli.main:app"
 
-[tool.setuptools]
-package-dir = {"" = ""}
-
 [tool.setuptools.packages.find]
 include = ["apps*", "packages*", "iacsec*"]
 exclude = ["packages.glitch_core.tests*", "packages.glitch_core.docs*"]
