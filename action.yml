@@ -30,25 +30,12 @@ runs:
     - shell: bash
       env:
         FORMATS: "${{ inputs.formats }}"
+        INPUT_PATH: "${{ inputs.path }}"
+        INPUT_TECH: "${{ inputs.tech }}"
+        INPUT_POSTFILTER: "${{ inputs.postfilter }}"
+        INPUT_SARIF_OUT: "${{ inputs.sarif_out }}"
       run: |
         set -euo pipefail
         export IACSEC_MODEL_CACHE="${{ inputs.model_cache }}"
         python -m iacsec.models.fetch "${{ inputs.postfilter }}"
-        mapfile -t formats < <(python - <<'EOF'
-import os
-formats = [f.strip() for f in os.environ['FORMATS'].split(',') if f.strip()]
-print('
-'.join(formats))
-EOF
-        )
-        cmd=(iacsec scan --path "${{ inputs.path }}" --tech "${{ inputs.tech }}"               --postfilter "${{ inputs.postfilter }}" --out "${{ inputs.sarif_out }}")
-        for fmt in "${formats[@]}"; do
-          cmd+=(--format "$fmt")
-        done
-        echo "Running: ${cmd[*]}"
-        if ! "${cmd[@]}"; then
-          status=$?
-          if [ "$status" -ne 1 ]; then
-            exit "$status"
-          fi
-        fi
+        python scripts/run_action_scan.py
