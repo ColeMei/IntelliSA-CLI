@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, List, Optional, Sequence, Set
 
@@ -14,11 +15,47 @@ from packages.exporters.jsonl import write_jsonl
 from packages.exporters.sarif import to_sarif
 from packages.exporters.csv import write_csv, Row as CSVRow
 from packages.glitch_adapter.run_glitch import run_glitch
-from packages.postfilter_llm.engine import ModelHandle, load_model, predict
+import logging
+from packages.postfilter_llm.engine import ModelHandle, load_model, predict, is_stub_backend
 from packages.schema.models import Detection, Prediction
 
 app = typer.Typer(add_completion=False)
 console = Console()
+
+_LOG = logging.getLogger(__name__)
+
+
+class DebugLogger:
+    """JSONL debug trace writer used during CLI runs."""
+
+    def __init__(self, path: Optional[Path]):
+        self._handle = None
+        if path is not None:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            self._handle = path.open("w", encoding="utf-8")
+
+    @property
+    def enabled(self) -> bool:
+        return self._handle is not None
+
+    def log(self, event: str, payload: Optional[dict] = None, **extra: object) -> None:
+        if not self._handle:
+            return
+        entry: dict[str, object] = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "event": event,
+        }
+        if payload:
+            entry.update(payload)
+        if extra:
+            entry.update(extra)
+        self._handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        self._handle.flush()
+
+    def close(self) -> None:
+        if self._handle:
+            self._handle.close()
+            self._handle = None
 
 CATEGORY_LABELS = {
     "HTTP_NO_TLS": "Use of HTTP without SSL/TLS",
@@ -83,84 +120,164 @@ def scan(
         "--fail-on-high",
         help="Treat only high-severity TPs as blocking findings",
     ),
+    debug_log: Optional[Path] = typer.Option(
+        None,
+        "--debug-log",
+        help="Write debug trace JSONL to this path",
+    ),
 ) -> None:
     """Run GLITCH + post-filter pipeline and export findings."""
 
-    if tech not in _VALID_TECH:
-        raise typer.BadParameter(
-            f"Unsupported tech '{tech}'. Choose from {sorted(_VALID_TECH)}"
-        )
-
-    formats = _normalize_formats(format)
-    selected_rules = _normalize_rules(rules)
-    console.log(
-        f"Starting scan: path={path} tech={tech} rules={selected_rules} formats={formats}"
-    )
+    debug = DebugLogger(debug_log)
 
     try:
-        raw_detections = run_glitch(str(path), tech)
-    except Exception as exc:  # pragma: no cover - defensive logging
-        console.print(f"[red]GLITCH execution failed: {exc}[/]")
-        raise typer.Exit(code=2) from exc
-
-    category_a: list[Detection] = []
-    category_a_preds: list[Prediction] = []
-    category_b: list[Detection] = []
-
-    for det in raw_detections:
-        needs_postfilter = bool(det.evidence.pop("postfilter", False))
-        if needs_postfilter:
-            category_b.append(det)
-        else:
-            category_a.append(det)
-            category_a_preds.append(
-                Prediction(label="TP", score=1.0, rationale="glitch-accepted")
+        if tech not in _VALID_TECH:
+            raise typer.BadParameter(
+                f"Unsupported tech '{tech}'. Choose from {sorted(_VALID_TECH)}"
             )
 
-    console.log(
-        "GLITCH returned %s detections (accepted=%s, postfilter=%s)"
-        % (len(raw_detections), len(category_a), len(category_b))
-    )
+        formats = _normalize_formats(format)
+        selected_rules = _normalize_rules(rules)
+        console.log(
+            f"Starting scan: path={path} tech={tech} rules={selected_rules} formats={formats}"
+        )
+        debug.log("start", {
+            "path": str(path),
+            "tech": tech,
+            "rules": selected_rules,
+            "formats": formats,
+        })
 
-    try:
-        model = load_model(postfilter)
-    except Exception as exc:  # pragma: no cover
-        console.print(f"[red]Failed to load model '{postfilter}': {exc}[/]")
-        raise typer.Exit(code=2) from exc
+        try:
+            raw_detections = run_glitch(str(path), tech)
+        except Exception as exc:  # pragma: no cover - defensive logging
+            console.print(f"[red]GLITCH execution failed: {exc}[/]")
+            debug.log("error", {"stage": "glitch", "message": str(exc)})
+            raise typer.Exit(code=2) from exc
 
-    effective_threshold = threshold if threshold is not None else model.default_threshold
-    try:
-        postfiltered = predict(category_b, path, threshold)
-    except Exception as exc:  # pragma: no cover
-        console.print(f"[red]Post-filtering failed: {exc}[/]")
-        raise typer.Exit(code=2) from exc
+        debug.log("glitch_detections", {
+            "count": len(raw_detections),
+            "detections": [det.model_dump() for det in raw_detections],
+        })
 
-    detections = category_a + category_b
-    predictions = category_a_preds + postfiltered
+        category_a: list[Detection] = []
+        category_a_preds: list[Prediction] = []
+        category_b: list[Detection] = []
 
-    console.log(
-        f"Post-filter complete: threshold={effective_threshold:.2f}"
-        f" TP={sum(1 for p in predictions if p.label == 'TP')}"
-    )
+        for det in raw_detections:
+            needs_postfilter = bool(det.evidence.pop("postfilter", False))
+            if needs_postfilter:
+                category_b.append(det)
+            else:
+                category_a.append(det)
+                category_a_preds.append(
+                    Prediction(label="TP", score=1.0, rationale="glitch-accepted")
+                )
 
-    outputs = _export_results(
-        detections,
-        predictions,
-        formats=formats,
-        out=out,
-        model=model,
-        threshold=effective_threshold,
-        scan_root=path,
-        tech=tech,
-    )
+        console.log(
+            "GLITCH returned %s detections (accepted=%s, postfilter=%s)"
+            % (len(raw_detections), len(category_a), len(category_b))
+        )
+        debug.log("detector_split", {
+            "total": len(raw_detections),
+            "accepted": len(category_a),
+            "postfilter": len(category_b),
+        })
 
-    blocking = _blocking_findings(detections, predictions, fail_on_high)
-    if blocking:
-        console.print(f"[red]{len(blocking)} blocking finding(s) detected[/]")
-        raise typer.Exit(code=1)
+        try:
+            model = load_model(postfilter)
+        except Exception as exc:  # pragma: no cover
+            console.print(f"[red]Failed to load model '{postfilter}': {exc}[/]")
+            debug.log("error", {"stage": "load_model", "message": str(exc)})
+            raise typer.Exit(code=2) from exc
 
-    console.print("[green]No blocking findings identified[/]")
-    raise typer.Exit(code=0)
+        effective_threshold = threshold if threshold is not None else model.default_threshold
+        if category_b:
+            debug.log("postfilter_inputs", {
+                "model": model.name,
+                "threshold": effective_threshold,
+                "examples": [
+                    {
+                        "detection": det.model_dump(),
+                        "snippet": det.snippet or "<empty>",
+                    }
+                    for det in category_b
+                ],
+            })
+
+        try:
+            postfiltered = predict(category_b, path, threshold)
+        except Exception as exc:  # pragma: no cover
+            console.print(f"[red]Post-filtering failed: {exc}[/]")
+            debug.log("error", {"stage": "predict", "message": str(exc)})
+            raise typer.Exit(code=2) from exc
+
+        if is_stub_backend():
+            message = "falling back to deterministic stub model; install torch+transformers for codet5p-220m."
+            console.print(f"[yellow]Warning:[/] {message}")
+            _LOG.warning(message)
+            debug.log("warning", {"stage": "postfilter", "message": "using stub model"})
+
+        if category_b:
+            debug.log("postfilter_outputs", {
+                "model": model.name,
+                "threshold": effective_threshold,
+                "results": [
+                    {
+                        "detection": det.model_dump(),
+                        "prediction": pred.model_dump(),
+                    }
+                    for det, pred in zip(category_b, postfiltered)
+                ],
+            })
+
+        detections = category_a + category_b
+        predictions = category_a_preds + postfiltered
+
+        console.log(
+            f"Post-filter complete: threshold={effective_threshold:.2f}"
+            f" TP={sum(1 for p in predictions if p.label == 'TP')}"
+        )
+        debug.log("final_results", {
+            "threshold": effective_threshold,
+            "results": [
+                {
+                    "detection": det.model_dump(),
+                    "prediction": pred.model_dump(),
+                }
+                for det, pred in zip(detections, predictions)
+            ],
+        })
+
+        outputs = _export_results(
+            detections,
+            predictions,
+            formats=formats,
+            out=out,
+            model=model,
+            threshold=effective_threshold,
+            scan_root=path,
+            tech=tech,
+        )
+
+        blocking = _blocking_findings(detections, predictions, fail_on_high)
+        debug.log("exports", {"paths": {k: str(v) for k, v in outputs.items()}})
+        debug.log("blocking_summary", {
+            "blocking": len(blocking),
+            "fail_on_high": fail_on_high,
+        })
+
+        if blocking:
+            console.print(f"[red]{len(blocking)} blocking finding(s) detected[/]")
+            debug.log("exit", {"code": 1, "blocking": len(blocking)})
+            raise typer.Exit(code=1)
+
+        console.print("[green]No blocking findings identified[/]")
+        debug.log("exit", {"code": 0, "blocking": 0})
+        raise typer.Exit(code=0)
+
+    finally:
+        debug.close()
 
 
 
@@ -199,11 +316,14 @@ def _build_csv_rows(
     root: Path,
     tech: str,
     detections: List[Detection],
+    predictions: List[Prediction],
 ) -> List[CSVRow]:
     rows: List[CSVRow] = []
     seen_files: Set[str] = set()
 
-    for det in detections:
+    for det, pred in zip(detections, predictions):
+        if pred.label != "TP":
+            continue
         category = CATEGORY_LABELS.get(det.rule_id, det.message)
         rows.append((det.file, det.line, category))
         seen_files.add(det.file)
@@ -268,7 +388,7 @@ def _export_results(
 
     if "csv" in fmt_set:
         csv_path = out if out.suffix == ".csv" and fmt_set == {"csv"} else out.with_suffix(".csv")
-        rows = _build_csv_rows(scan_root, tech, detections)
+        rows = _build_csv_rows(scan_root, tech, detections, predictions)
         write_csv(csv_path, rows)
         outputs["csv"] = csv_path
 

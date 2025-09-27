@@ -131,8 +131,11 @@ def predict(
 
     artifacts = _load_hf_artifacts(model)
     if artifacts is None:
+        global _BACKEND_MODE
+        _BACKEND_MODE = "stub"
         return _predict_statically(detections, code_dir, threshold, model)
 
+    _BACKEND_MODE = "hf"
     tokenizer, classifier, device = artifacts
     batch_size = int(os.environ.get("IACSEC_POSTFILTER_BATCH", "16")) or 16
     texts = [_format_detection(det) for det in detections]
@@ -159,8 +162,12 @@ def predict(
             positive_idx = _positive_index(classifier)
             score = float(prob[positive_idx].item())
             effective_threshold = _resolve_threshold(det, threshold, model)
-            label = "TP" if score >= effective_threshold else "FP"
-            rationale = "score>=threshold" if label == "TP" else "score<threshold"
+            meets_threshold = score >= effective_threshold
+            label = "TP" if meets_threshold else "FP"
+            rationale = "score>=threshold" if meets_threshold else "score<threshold"
+            if _DEF_INVERT_FLAG:
+                label = "FP" if meets_threshold else "TP"
+                rationale = "inverted:" + rationale
             predictions.append(
                 Prediction(label=label, score=score, rationale=rationale)
             )
@@ -185,6 +192,14 @@ def _stable_score(det: Detection, code_dir: Path, model: ModelHandle) -> float:
     return value / float(1 << 64)
 
 _HF_CACHE: Dict[str, tuple] = {}
+
+
+_BACKEND_MODE = "unknown"
+
+
+
+
+_DEF_INVERT_FLAG = os.environ.get("IACSEC_INVERT_POSTFILTER", "").lower() in {"1", "true", "yes"}
 
 
 def _load_hf_artifacts(handle: ModelHandle):
@@ -240,8 +255,12 @@ def _predict_statically(
     for det in detections:
         effective_threshold = _resolve_threshold(det, threshold, model)
         score = _stable_score(det, code_dir, model)
-        label = "TP" if score >= effective_threshold else "FP"
-        rationale = "score>=threshold" if label == "TP" else "score<threshold"
+        meets_threshold = score >= effective_threshold
+        label = "TP" if meets_threshold else "FP"
+        rationale = "score>=threshold" if meets_threshold else "score<threshold"
+        if _DEF_INVERT_FLAG:
+            label = "FP" if meets_threshold else "TP"
+            rationale = "inverted:" + rationale
         predictions.append(
             Prediction(label=label, score=score, rationale=rationale)
         )
@@ -361,4 +380,13 @@ def _is_hex_digest(value: Optional[str]) -> bool:
     return True
 
 
-__all__ = ["ModelHandle", "load_model", "predict"]
+
+
+
+def is_stub_backend() -> bool:
+    """Return True if the most recent predict() call used the deterministic stub."""
+
+    return _BACKEND_MODE == "stub"
+
+
+__all__ = ["ModelHandle", "load_model", "predict", "is_stub_backend"]

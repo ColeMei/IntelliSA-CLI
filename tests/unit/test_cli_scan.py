@@ -132,3 +132,94 @@ def test_scan_returns_zero_when_no_blocking(monkeypatch, tmp_path):
     csv_lines = csv_path.read_text().splitlines()
     assert csv_lines[0] == "PATH,LINE,CATEGORY"
     assert csv_lines[1] == "roles/web/tasks/main.yml,10,Empty password"
+
+
+def test_scan_debug_log(monkeypatch, tmp_path):
+    detection_accept = _dummy_detection(postfilter=False, rule_id="EMPTY_PASSWORD")
+    detection_model = _dummy_detection(postfilter=True)
+
+    monkeypatch.setattr("apps.cli.main.run_glitch", lambda path, tech: [detection_accept, detection_model])
+    monkeypatch.setattr("apps.cli.main.load_model", lambda name: DummyModel(name=name, threshold=0.5))
+
+    model_predictions = [_dummy_prediction(label="FP", score=0.40, rationale="score<threshold")]
+    monkeypatch.setattr("apps.cli.main.predict", lambda dets, code_dir, threshold: model_predictions)
+
+    _touch_detection_file(tmp_path)
+
+    out_path = tmp_path / "out.sarif"
+    debug_path = tmp_path / "debug.jsonl"
+    result = runner.invoke(
+        app,
+        [
+            "--path",
+            str(tmp_path),
+            "--out",
+            str(out_path),
+            "--format",
+            "sarif",
+            "--format",
+            "csv",
+            "--debug-log",
+            str(debug_path),
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert debug_path.exists()
+    entries = [json.loads(line) for line in debug_path.read_text().splitlines()]
+    events = {entry["event"] for entry in entries}
+    assert {"glitch_detections", "detector_split", "postfilter_inputs", "postfilter_outputs", "final_results", "exit"}.issubset(events)
+
+    post_inputs = next(entry for entry in entries if entry["event"] == "postfilter_inputs")
+    assert post_inputs["examples"][0]["snippet"] == detection_model.snippet
+
+    post_outputs = next(entry for entry in entries if entry["event"] == "postfilter_outputs")
+    assert post_outputs["results"][0]["prediction"]["label"] == "FP"
+
+    final_results = next(entry for entry in entries if entry["event"] == "final_results")
+    assert len(final_results["results"]) == 2
+    assert final_results["results"][1]["prediction"]["label"] == "FP"
+
+    exit_entry = next(entry for entry in entries if entry["event"] == "exit")
+    assert exit_entry["code"] == 1
+
+
+def test_scan_warns_when_stub_model_used(monkeypatch, tmp_path):
+    detection = _dummy_detection(postfilter=True)
+
+    monkeypatch.setattr("apps.cli.main.run_glitch", lambda path, tech: [detection])
+
+    def stub_model(name):
+        model = DummyModel(name=name, threshold=0.5)
+        model.framework = "stub"
+        return model
+
+    monkeypatch.setattr("apps.cli.main.load_model", stub_model)
+
+    def stub_predict(dets, code_dir, threshold):
+        return [_dummy_prediction(label="FP", score=0.2, rationale="score<threshold")]
+
+    monkeypatch.setattr("apps.cli.main.predict", stub_predict)
+    monkeypatch.setattr("apps.cli.main.is_stub_backend", lambda: True)
+
+    _touch_detection_file(tmp_path)
+
+    debug_path = tmp_path / "debug.jsonl"
+    result = runner.invoke(
+        app,
+        [
+            "--path",
+            str(tmp_path),
+            "--out",
+            str(tmp_path / "out.sarif"),
+            "--format",
+            "sarif",
+            "--debug-log",
+            str(debug_path),
+        ],
+    )
+
+    assert "falling back to deterministic stub model" in result.stdout
+    entries = [json.loads(line) for line in debug_path.read_text().splitlines()]
+    warning_events = [entry for entry in entries if entry["event"] == "warning"]
+    assert warning_events and warning_events[0]["message"] == "using stub model"
