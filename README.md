@@ -3,6 +3,7 @@
 > GLITCH ➜ LLM Post-Filter ➜ SARIF/JSON — a practical IaC security checker with fewer false positives.
 
 This is a **pilot** repo whose goal is to ship a minimal, working tool that:
+
 - runs **GLITCH** locally,
 - passes detections through our **encoder-based LLM post-filter**,
 - emits **SARIF** (for GitHub code scanning), **JSONL**, and **CSV**,
@@ -24,14 +25,14 @@ pip install -e .
 python -m iacsec.models.fetch codet5p-220m  # downloads weights from Hugging Face
 
 # 4) Scan a repo
-iacsec scan --path ./examples/sample_repo --tech auto --format sarif --out artifacts/iacsec.sarif
+iacsec --path ./examples/sample_repo --tech auto --format sarif --out artifacts/scan
 ```
 
 Tip: When a registry entry downloads remote weights, set `IACSEC_MODEL_CACHE` to control where files land:
 
 ```bash
 IACSEC_MODEL_CACHE=$PWD/artifacts/model_cache \
-  iacsec scan --path ./examples/sample_repo --tech auto --format sarif --out artifacts/iacsec.sarif
+  iacsec --path ./examples/sample_repo --tech auto --format sarif --out artifacts/scan
 ```
 
 The champion encoder (`codet5p-220m`) references metadata under `models/`, while the actual weights download from Hugging Face on first use. The `codet5p-220m-stub` entry remains for deterministic tests.
@@ -46,7 +47,7 @@ iacsec/
 │  └─ cli/                     # Typer-based CLI entrypoints
 ├─ packages/
 │  ├─ schema/                  # Stable Pydantic contracts for detections/results
-│  ├─ glitch_core/             # 🚨 Vendored GLITCH source (upstream snapshot)
+│  ├─ glitch_core/             # Vendored GLITCH source (upstream snapshot)
 │  ├─ glitch_adapter/          # Wraps glitch_core → schema.Detection
 │  ├─ postfilter_llm/          # Loads champion model, scores, thresholds
 │  └─ exporters/               # SARIF / JSONL / CSV / table
@@ -71,39 +72,46 @@ iacsec/
 └─ README.md
 ```
 
-## Initialize this repo (human or AI agent)
-
-1. **Vendor GLITCH**: copy the GLITCH source into `packages/glitch_core/` (keep its original LICENSE and NOTICE files in that folder).
-2. **Wire the adapter**: implement `packages/glitch_adapter/run_glitch.py` exposing:
-
-   ```python
-   def run_glitch(path: str, tech: str) -> list[schema.Detection]: ...
-   ```
-3. **Install** (`pip install -e .`) and run `iacsec scan --help` to verify CLI wiring.
-4. **Models**: the champion encoder (`codet5p-220m`) ships in `models/`; keep the stub entry for deterministic tests or update `models/registry.yaml` if you swap weights.
-5. **E2E**: `pytest -q` should produce a SARIF under `tests/e2e/golden/` with a stable hash.
-6. **Action smoke test**: see `AGENTS.md` for CI pointers and workflows.
-
 ## CLI (pilot surface)
 
 ```bash
-iacsec scan \
+iacsec \
   --path . \
   --tech auto \
   --rules http,weak-crypto,hardcoded-secret,suspicious-comment \
   --postfilter codet5p-220m \
   --threshold 0.62 \
-  --format sarif --format json --format csv \
-  --out artifacts/iacsec.sarif
+  --format sarif --format json --format csv --format table \
+  --out artifacts/scan
 ```
 
 **Exit codes**: `0` = ok, `1` = findings (non-blocking unless `--fail-on-high`), `2` = runtime error.
 
+### CLI Options
+
+- `--path` - Path to scan (default: current directory)
+- `--tech` - Technology: `auto|ansible|chef|puppet` (default: auto)
+- `--rules` - Comma-separated rule IDs (currently informational)
+- `--postfilter` - Post-filter model name (default: codet5p-220m)
+- `--threshold` - Override model default threshold
+- `--format` - Output formats: `sarif`, `json`, `csv`, `table` (repeatable, default: sarif)
+- `--out` - Base output path for all formats (directory or filename prefix)
+- `--fail-on-high` - Treat only high-severity TPs as blocking findings
+- `--debug-log` - Write debug trace JSONL to specified path
+
+### Debugging & Troubleshooting
+
 Add `--debug-log artifacts/iacsec-debug.jsonl` to capture a JSONL trace of raw GLITCH detections, encoder inputs, and post-filter predictions for each run.
 
-If the CLI warns about falling back to the deterministic stub model, install `torch` and `transformers` so scans use the real codet5p-220m weights.
+**Stub Model Warning**: If the CLI warns about falling back to the deterministic stub model, install the ML dependencies:
+
+```bash
+pip install torch transformers
+```
+
+This ensures scans use the real codet5p-220m weights instead of the simplified stub model.
 
 ## Licensing
 
-* Retain GLITCH’s original license inside `packages/glitch_core/`.
-* This repo’s root `LICENSE` covers our glue code and model packaging.
+- Retain GLITCH’s original license inside `packages/glitch_core/`.
+- This repo’s root `LICENSE` covers our glue code and model packaging.

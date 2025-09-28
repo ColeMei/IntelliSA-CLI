@@ -112,9 +112,9 @@ def scan(
     postfilter: str = typer.Option("codet5p-220m", "--postfilter", help="Post-filter model name"),
     threshold: Optional[float] = typer.Option(None, "--threshold", help="Override model default"),
     format: List[str] = typer.Option(
-        ["sarif"], "--format", help="Repeatable option: sarif, json, table"
+        ["sarif"], "--format", help="Repeatable option: sarif, json, csv, table"
     ),
-    out: Path = typer.Option(Path("artifacts/iacsec.sarif"), "--out", help="Output path for SARIF"),
+    out: Path = typer.Option(Path("artifacts/iacsec"), "--out", help="Base output path for all formats (directory or filename prefix)"),
     fail_on_high: bool = typer.Option(
         False,
         "--fail-on-high",
@@ -367,6 +367,19 @@ def _export_results(
     model_descriptor = f"{model.name}@{model.version}"
 
     outputs: dict[str, Path] = {}
+    
+    # Determine if --out is a directory or file base
+    if out.is_dir() or (not out.exists() and out.suffix == ""):
+        # Directory: use default filename with appropriate extensions
+        base_name = "iacsec"
+        output_dir = out
+    else:
+        # File base: use the filename without extension as base
+        base_name = out.stem
+        output_dir = out.parent
+    
+    # Ensure output directory exists
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     if "sarif" in fmt_set:
         sarif_obj = to_sarif(
@@ -375,19 +388,19 @@ def _export_results(
             tool_name="iacsec",
             tool_version=str(model.version),
         )
-        out.parent.mkdir(parents=True, exist_ok=True)
-        with out.open("w", encoding="utf-8") as handle:
+        sarif_path = output_dir / f"{base_name}.sarif"
+        with sarif_path.open("w", encoding="utf-8") as handle:
             json.dump(sarif_obj, handle, indent=2)
             handle.write("\n")
-        outputs["sarif"] = out
+        outputs["sarif"] = sarif_path
 
     if "json" in fmt_set:
-        json_path = out if out.suffix == ".jsonl" and fmt_set == {"json"} else out.with_suffix(".jsonl")
+        json_path = output_dir / f"{base_name}.jsonl"
         write_jsonl(json_path, detections, predictions, threshold, model_descriptor)
         outputs["json"] = json_path
 
     if "csv" in fmt_set:
-        csv_path = out if out.suffix == ".csv" and fmt_set == {"csv"} else out.with_suffix(".csv")
+        csv_path = output_dir / f"{base_name}.csv"
         rows = _build_csv_rows(scan_root, tech, detections, predictions)
         write_csv(csv_path, rows)
         outputs["csv"] = csv_path
