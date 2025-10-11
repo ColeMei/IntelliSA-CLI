@@ -8,7 +8,7 @@ from typing import Dict, Iterable, List, Sequence
 import sys
 
 import yaml
-from pkg_resources import resource_filename
+from importlib.resources import files
 
 from packages.schema.models import Detection
 
@@ -113,7 +113,7 @@ def _collect_errors(root: Path, tech: str):  # pragma: no cover - patched in tes
     parser_cls = parser_map[tech]
     parser = parser_cls()
 
-    config_path = resource_filename("glitch", "configs/default.ini")
+    config_path = str(files("glitch").joinpath("configs/default.ini"))
     visitor = SecurityVisitor(Tech(tech))
     visitor.config(config_path)
 

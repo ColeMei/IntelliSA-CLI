@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import json
+import warnings
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, List, Optional, Sequence, Set
 
 import typer
+
+# Suppress pkg_resources deprecation warnings from vendored GLITCH
+warnings.filterwarnings("ignore", message=".*pkg_resources.*deprecated.*")
 from rich.console import Console
 from rich.table import Table
 
