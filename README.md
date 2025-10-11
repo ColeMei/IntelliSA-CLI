@@ -1,117 +1,128 @@
-# iacsec (pilot)
+# iacsec
 
-> GLITCH ➜ LLM Post-Filter ➜ SARIF/JSON — a practical IaC security checker with fewer false positives.
+> **GLITCH + LLM Post-Filter** — IaC security scanner with fewer false positives.
 
-This is a **pilot** repo whose goal is to ship a minimal, working tool that:
+A research-backed tool that combines [GLITCH](https://github.com/sr-lab/GLITCH) static analysis with an encoder-based LLM to filter false positives from Infrastructure-as-Code security scans.
 
-- runs **GLITCH** locally,
-- passes detections through our **encoder-based LLM post-filter**,
-- emits **SARIF** (for GitHub code scanning), **JSONL**, and **CSV**,
-- is easy for AI agents to extend (GLITCH source is vendored in-repo).
+**Supported technologies**: Ansible, Chef, Puppet  
+**Output formats**: SARIF (GitHub Code Scanning), JSONL, CSV, console table
 
-## Quickstart
+## Quick Start
 
-Requires Python 3.10+.
+Requires **Python 3.10+**.
 
 ```bash
-# 1) Create & activate venv
+# 1. Setup environment
 python -m venv .venv && source .venv/bin/activate
-
-# 2) Install (editable)
 pip install -U pip wheel
 pip install -e .
 
-# 3) Fetch the champion weights
-python -m iacsec.models.fetch codet5p-220m  # downloads weights from Hugging Face
+# 2. Fetch model weights from Hugging Face
+python -m iacsec.models.fetch codet5p-220m
 
-# 4) Scan a repo
-iacsec --path ./examples/sample_repo --tech auto --format sarif --out artifacts/scan
+# 3. Scan a repository
+iacsec --path ./examples/sample_repo --tech auto --format sarif --out artifacts/scan.sarif
 ```
 
-Tip: When a registry entry downloads remote weights, set `IACSEC_MODEL_CACHE` to control where files land:
+**Exit codes**:
+- `0` = no blocking findings
+- `1` = findings detected (non-blocking unless `--fail-on-high`)
+- `2` = runtime error
 
-```bash
-IACSEC_MODEL_CACHE=$PWD/artifacts/model_cache \
-  iacsec --path ./examples/sample_repo --tech auto --format sarif --out artifacts/scan
-```
-
-The champion encoder (`codet5p-220m`) references metadata under `models/`, while the actual weights download from Hugging Face on first use. The `codet5p-220m-stub` entry remains for deterministic tests.
-
-- Outputs from trees now include both high-precision GLITCH findings (empty passwords, invalid binds, missing default switches, etc.) and noisy smells filtered through `codet5p-220m`.
-
-## Repo layout (pilot)
-
-```
-iacsec/
-├─ apps/
-│  └─ cli/                     # Typer-based CLI entrypoints
-├─ packages/
-│  ├─ schema/                  # Stable Pydantic contracts for detections/results
-│  ├─ glitch_core/             # Vendored GLITCH source (upstream snapshot)
-│  ├─ glitch_adapter/          # Wraps glitch_core → schema.Detection
-│  ├─ postfilter_llm/          # Loads champion model, scores, thresholds
-│  └─ exporters/               # SARIF / JSONL / CSV / table
-├─ models/
-│  ├─ registry.yaml            # Model index (name, version, uri, sha256, threshold)
-│  └─ codet5p-220m/            # Champion weights + tokenizer bundle
-├─ docs/
-│  ├─ ROADMAP.md               # Background (Stage 1–3) + Why a tool (practice)
-│  └─ DEVELOPMENT_REPORT.md    # Current architecture + decisions
-├─ examples/
-│  └─ sample_repo/             # Tiny IaC repo used by e2e tests
-├─ tests/
-│  ├─ unit/                    # schema, thresholding, adapters
-│  └─ e2e/                     # scan sample_repo → golden SARIF
-├─ .github/
-│  └─ workflows/ci.yml         # Lint + unit + e2e (CPU)
-├─ pyproject.toml              # Minimal build metadata
-├─ action.yml                  # Composite GitHub Action (pilot)
-├─ .editorconfig
-├─ .gitignore
-├─ LICENSE
-└─ README.md
-```
-
-## CLI (pilot surface)
+## Basic Usage
 
 ```bash
 iacsec \
-  --path . \
+  --path /path/to/repo \
   --tech auto \
-  --rules http,weak-crypto,hardcoded-secret,suspicious-comment \
-  --postfilter codet5p-220m \
-  --threshold 0.62 \
-  --format sarif --format json --format csv --format table \
-  --out artifacts/scan
+  --format sarif \
+  --out artifacts/scan.sarif
 ```
 
-**Exit codes**: `0` = ok, `1` = findings (non-blocking unless `--fail-on-high`), `2` = runtime error.
-
-### CLI Options
-
-- `--path` - Path to scan (default: current directory)
+**Common options**:
+- `--path` - Directory or file to scan (default: current directory)
 - `--tech` - Technology: `auto|ansible|chef|puppet` (default: auto)
-- `--rules` - Comma-separated rule IDs (currently informational)
-- `--postfilter` - Post-filter model name (default: codet5p-220m)
-- `--threshold` - Override model default threshold
-- `--format` - Output formats: `sarif`, `json`, `csv`, `table` (repeatable, default: sarif)
-- `--out` - Base output path for all formats (directory or filename prefix)
-- `--fail-on-high` - Treat only high-severity TPs as blocking findings
-- `--debug-log` - Write debug trace JSONL to specified path
+- `--format` - Output format: `sarif`, `json`, `csv`, `table` (repeatable)
+- `--out` - Output path (directory or file prefix)
+- `--postfilter` - Model name from `models/registry.yaml` (default: codet5p-220m)
+- `--threshold` - Override model's default threshold
+- `--fail-on-high` - Exit code 1 only for high-severity findings
+- `--debug-log` - Write detailed trace to JSONL file
 
-### Debugging & Troubleshooting
+Run `iacsec --help` for all options.
 
-Add `--debug-log artifacts/iacsec-debug.jsonl` to capture a JSONL trace of raw GLITCH detections, encoder inputs, and post-filter predictions for each run.
+## How It Works
 
-**Stub Model Warning**: If the CLI warns about falling back to the deterministic stub model, install the ML dependencies:
+1. **GLITCH** scans your IaC files for 11 security rules across 3 categories:
+   - High-precision rules (empty password, invalid bind, etc.) → accepted directly
+   - Noisy rules (HTTP without TLS, weak crypto, hardcoded secrets, suspicious comments) → post-filter
 
+2. **LLM post-filter** (CodeT5p-220M encoder) scores noisy detections as True Positive (TP) or False Positive (FP)
+
+3. **Exporters** produce SARIF, JSONL, or CSV with only high-confidence findings
+
+**Research background**: See [docs/ROADMAP.md](docs/ROADMAP.md) for the 3-stage research process that validated this approach.
+
+## Troubleshooting
+
+**Stub model warning**:
+```
+Warning: falling back to deterministic stub model; install torch+transformers for codet5p-220m.
+```
+
+**Fix**: Install PyTorch and transformers:
 ```bash
 pip install torch transformers
 ```
 
-This ensures scans use the real codet5p-220m weights instead of the simplified stub model.
+The stub model produces deterministic but artificial scores for testing purposes only.
 
-## Licensing
+## Documentation
 
-- Retain GLITCH’s original license inside `packages/glitch_core/`.
-- This repo’s root `LICENSE` covers our glue code and model packaging.
+- **[User Handbook](docs/USER_HANDBOOK.md)**: Complete operational guide (installation, all CLI flags, CI/CD integration)
+- **[Development Report](docs/DEVELOPMENT_REPORT.md)**: Architecture and contributor guide
+- **[Roadmap](docs/ROADMAP.md)**: Research background and project vision
+- **[Schema](docs/SCHEMA.md)**: Technical data model reference
+
+## Repository Structure
+
+```
+├── apps/cli/              # Typer CLI entrypoint
+├── packages/
+│   ├── glitch_core/       # Vendored GLITCH (upstream snapshot)
+│   ├── glitch_adapter/    # GLITCH → schema.Detection
+│   ├── postfilter_llm/    # CodeT5p-220M loader + inference
+│   ├── exporters/         # SARIF / JSONL / CSV
+│   └── schema/            # Pydantic contracts
+├── models/
+│   ├── registry.yaml      # Model index (name, URI, SHA256, threshold)
+│   └── codet5p-220m/      # Champion model metadata
+├── tests/
+│   ├── unit/              # Module-level tests
+│   └── e2e/               # End-to-end golden SARIF tests
+└── examples/sample_repo/  # Minimal test repository
+```
+
+## GitHub Action
+
+Use as a composite action in workflows:
+
+```yaml
+- uses: your-org/iacsec@main
+  with:
+    path: .
+    format: sarif
+    output: iacsec.sarif
+    fail-on-high: true
+```
+
+See [action.yml](action.yml) for all inputs.
+
+## License
+
+- **This repository**: Apache 2.0 (see [LICENSE](LICENSE))
+- **GLITCH**: Original license retained in `packages/glitch_core/`
+
+## Citation
+
+If you use this tool in research, please cite our work (publication pending).
