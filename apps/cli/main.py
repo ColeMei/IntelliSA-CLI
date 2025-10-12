@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import json
+import logging
+import sys
 import warnings
 from datetime import datetime, timezone
+from io import StringIO
 from pathlib import Path
 from typing import Iterable, List, Optional, Sequence, Set
 
@@ -12,6 +15,24 @@ import typer
 
 # Suppress pkg_resources deprecation warnings from vendored GLITCH
 warnings.filterwarnings("ignore", message=".*pkg_resources.*deprecated.*")
+
+# Suppress PLY token warnings from puppetparser by filtering stderr during import
+class _SuppressPLYWarnings:
+    """Context manager to suppress PLY token warnings from puppetparser."""
+    def __enter__(self):
+        self._original_stderr = sys.stderr
+        self._stderr_capture = StringIO()
+        sys.stderr = self._stderr_capture
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        captured = self._stderr_capture.getvalue()
+        sys.stderr = self._original_stderr
+        # Only suppress PLY token warnings, pass through other stderr
+        for line in captured.splitlines():
+            if not (line.startswith("WARNING: Token") or 
+                    line.startswith("WARNING: There are") and "unused tokens" in line):
+                print(line, file=sys.stderr)
 from rich.console import Console
 from rich.table import Table
 
@@ -153,7 +174,9 @@ def scan(
         })
 
         try:
-            raw_detections = run_glitch(str(path), tech)
+            # Suppress PLY warnings from puppetparser during GLITCH scan
+            with _SuppressPLYWarnings():
+                raw_detections = run_glitch(str(path), tech)
         except Exception as exc:  # pragma: no cover - defensive logging
             console.print(f"[red]GLITCH execution failed: {exc}[/]")
             debug.log("error", {"stage": "glitch", "message": str(exc)})
