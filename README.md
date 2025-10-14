@@ -1,12 +1,14 @@
 # iacsec
 
-> **Project Hub**: [LLM-IaC-SecEval](../00.LLM-IaC-SecEval)  
+> **Project Hub**: [IntelliSA](../00.IntelliSA)  
 > **This repository**: Production-ready CLI toolkit  
 > See the hub for paper materials, artifact manifest, and links to all repositories.
 
 ## Overview
 
-IaC security scanner combining GLITCH static analysis with an encoder-based LLM to filter false positives.
+IaC security scanner implementing the **IntelliSA** method
+
+**IntelliSA**: An Intelligent Analyzer for IaC Security Smell Detection via Rule and Neural Inference
 
 **Supported technologies**: Ansible, Chef, Puppet  
 **Output formats**: SARIF (GitHub Code Scanning), JSONL, CSV, console table
@@ -29,6 +31,7 @@ iacsec --path ./examples/sample_repo --tech auto --format sarif --out artifacts/
 ```
 
 **Exit codes**:
+
 - `0` = no blocking findings
 - `1` = findings detected (non-blocking unless `--fail-on-high`)
 - `2` = runtime error
@@ -40,6 +43,7 @@ iacsec --path /path/to/repo --tech auto --format sarif --out artifacts/scan.sari
 ```
 
 **Common options**:
+
 - `--path` - Directory or file to scan (default: current directory)
 - `--tech` - Technology: `auto|ansible|chef|puppet` (default: auto)
 - `--format` - Output format: `sarif`, `json`, `csv`, `table` (repeatable)
@@ -51,47 +55,41 @@ iacsec --path /path/to/repo --tech auto --format sarif --out artifacts/scan.sari
 
 Run `iacsec --help` for all options.
 
-## How It Works
+## How IntelliSA Works
 
-1. **GLITCH** scans IaC files for 11 security rules:
+1. **Rule-Based Detection** scans IaC files for 9 security rules:
+
    - High-precision rules (empty password, invalid bind, etc.) → accepted directly
-   - Noisy rules (HTTP without TLS, weak crypto, hardcoded secrets, suspicious comments) → post-filter
+   - Noisy rules (HTTP without TLS, weak crypto, hardcoded secrets, suspicious comments) → neural inference
 
-2. **LLM post-filter** (CodeT5p-220M encoder) scores noisy detections as True Positive or False Positive
+2. **Neural Inference** scores noisy detections as True Positive or False Positive
 
 3. **Exporters** produce SARIF, JSONL, or CSV with only high-confidence findings
-
-Research background: See [docs/ROADMAP.md](docs/ROADMAP.md)
 
 ## Troubleshooting
 
 **Stub model warning**:
+
 ```
 Warning: falling back to deterministic stub model
 ```
 
-**Fix**: Install PyTorch and transformers:
-```bash
-pip install torch transformers
-```
+**Fix**: Install PyTorch and transformers
 
 The stub model produces deterministic but artificial scores for testing only.
 
 ## Documentation
 
 - [User Handbook](docs/USER_HANDBOOK.md) - Complete operational guide
-- [Development Report](docs/DEVELOPMENT_REPORT.md) - Architecture and contributor guide
-- [Roadmap](docs/ROADMAP.md) - Research background and project vision
-- [Schema](docs/SCHEMA.md) - Technical data model reference
 
 ## Repository Structure
 
 ```
 ├── apps/cli/              # Typer CLI entrypoint
 ├── packages/
-│   ├── glitch_core/       # Vendored GLITCH
+│   ├── glitch_core/       # Vendored GLITCH (rule-based)
 │   ├── glitch_adapter/    # GLITCH to schema adapter
-│   ├── postfilter_llm/    # CodeT5p-220M loader and inference
+│   ├── postfilter_llm/    # CodeT5p-220M (neural inference)
 │   ├── exporters/         # SARIF / JSONL / CSV
 │   └── schema/            # Pydantic contracts
 ├── models/
@@ -108,7 +106,7 @@ The stub model produces deterministic but artificial scores for testing only.
 Use as a composite action in workflows:
 
 ```yaml
-- uses: your-org/iacsec@main
+- uses: ColeMei/iacsec@main
   with:
     path: .
     format: sarif
@@ -117,3 +115,11 @@ Use as a composite action in workflows:
 ```
 
 See [action.yml](action.yml) for all inputs.
+
+## Citation
+
+If you use this tool in research, please cite:
+
+```bibtex
+PLACEHOLDER
+```

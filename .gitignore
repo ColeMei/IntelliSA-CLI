@@ -1,58 +1,65 @@
-########################################
-# OS / Editor
-########################################
-.DS_Store
-.idea/
-.vscode/
-
-########################################
-# Python bytecode / cache
-########################################
+# Python
 __pycache__/
+*.py[cod]
 *.pyc
 *.pyo
-*.pyd
-
-########################################
-# Build & packaging outputs
-########################################
+*.so
+.Python
+*.egg-info/
 dist/
 build/
-*.egg-info/
-.eggs/
 
-########################################
-# Virtual environments & local caches
-########################################
+# Virtual environments
 .venv/
-/.cache/
-/.conda_envs/
-/.conda_pkgs/
+venv/
+env/
+ENV/
 
-########################################
-# Test & coverage artifacts
-########################################
-/.pytest_cache/
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+*~
+
+# Testing
+.pytest_cache/
 .coverage
 htmlcov/
 
-########################################
-# Models (large binary weights)
-########################################
-/models/*/model.safetensors
+# Jupyter
+.ipynb_checkpoints/
 
-########################################
-# Scan artifacts / outputs
-########################################
+# Logs
+*.log
+
+# ==============================================================================
+# iacsec Specific
+# ==============================================================================
+
+# Detailed documentation (keep local only)
+docs/
+!docs/USER_HANDBOOK.md
+
+# Model weights (large binaries)
+models/*/model.safetensors
+
+# Scan output artifacts
 artifacts/
 *.sarif
-# Keep golden files under tests
+*.jsonl
+
+# Keep test golden files
 !tests/e2e/golden/*.sarif
 !tests/e2e/golden/*.jsonl
 
-########################################
-# Vendored upstream (kept isolated, not tracked)
-########################################
-examples/test_set/
-tmp_*.sarif
-tmp_*.jsonl
+# Conda cache (if using conda)
+.conda_envs/
+.conda_pkgs/
+
+# Example Test Data
+examples/sample_repo/
+examples/test_repo/
