@@ -1,7 +1,7 @@
 models:
 - name: codet5p-220m
   version: 1.0.0
-  uri: https://huggingface.co/colemei/codet5p-220m-iac-security/resolve/main/model.safetensors
+  uri: https://huggingface.co/colemei/IntelliSA-220m/resolve/main/model.safetensors
   sha256: 4061d8ab7be774e4253e3bab5af7ca0da49ac819b00498cd5949ece2223cee0f
   framework: torch
   default_threshold: 0.61
