@@ -37,13 +37,13 @@ def test_write_jsonl(tmp_path):
     predictions = [sample_prediction()]
     out = tmp_path / "out.jsonl"
 
-    write_jsonl(out, detections, predictions, threshold=0.62, model_name="codet5p-220m")
+    write_jsonl(out, detections, predictions, threshold=0.62, model_name="IntelliSA-220m")
 
     lines = out.read_text().splitlines()
     assert len(lines) == 1
     payload = json.loads(lines[0])
     assert payload["threshold"] == 0.62
-    assert payload["model"] == "codet5p-220m"
+    assert payload["model"] == "IntelliSA-220m"
     assert payload["detection"]["rule_id"] == "HTTP_NO_TLS"
     assert payload["prediction"]["label"] == "TP"
 

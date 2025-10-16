@@ -10,7 +10,7 @@ def make_handle(tmp_path: Path, framework: str = "torch") -> ModelHandle:
     dummy_path = tmp_path / "weights.safetensors"
     dummy_path.write_bytes(b"stub")
     return ModelHandle(
-        name="codet5p-220m",
+        name="IntelliSA-220m",
         version="1",
         path=dummy_path,
         framework=framework,
@@ -28,7 +28,7 @@ def test_fetch_model_success(monkeypatch, tmp_path):
         lambda handle: (object(), object(), "cpu"),
     )
 
-    rc = fetch_model("codet5p-220m")
+    rc = fetch_model("IntelliSA-220m")
     assert rc == 0
 
 
@@ -41,7 +41,7 @@ def test_fetch_model_stub(monkeypatch, tmp_path):
         lambda handle: None,
     )
 
-    rc = fetch_model("codet5p-220m")
+    rc = fetch_model("IntelliSA-220m")
     assert rc == 3
 
 
@@ -51,5 +51,5 @@ def test_fetch_model_error(monkeypatch):
         lambda name: (_ for _ in ()).throw(RuntimeError("boom")),
     )
 
-    rc = fetch_model("codet5p-220m")
+    rc = fetch_model("IntelliSA-220m")
     assert rc == 1

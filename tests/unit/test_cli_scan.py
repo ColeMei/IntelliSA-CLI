@@ -87,7 +87,7 @@ def test_scan_writes_sarif_and_json(monkeypatch, tmp_path):
     lines = jsonl_path.read_text().splitlines()
     assert len(lines) == 1
     payload = json.loads(lines[0])
-    assert payload["model"].startswith("codet5p-220m@")
+    assert payload["model"].startswith("IntelliSA-220m@")
     csv_path = out_path.with_suffix(".csv")
     csv_lines = csv_path.read_text().splitlines()
     assert csv_lines[0] == "PATH,LINE,CATEGORY"
