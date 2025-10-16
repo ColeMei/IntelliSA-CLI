@@ -132,9 +132,10 @@ def scan(
     rules: str = typer.Option(
         _DEFAULT_RULES,
         "--rules",
-        help="Comma-separated rule ids (currently informational)",
+        help="Comma-separated smell types to detect (default: all)",
+        show_default=False,
     ),
-    postfilter: str = typer.Option("codet5p-220m", "--postfilter", help="Post-filter model name"),
+    postfilter: str = typer.Option("IntelliSA-220m", "--postfilter", help="Post-filter model name"),
     threshold: Optional[float] = typer.Option(None, "--threshold", help="Override model default"),
     format: List[str] = typer.Option(
         ["sarif"], "--format", help="Repeatable option: sarif, json, csv, table"
@@ -151,7 +152,7 @@ def scan(
         help="Write debug trace JSONL to this path",
     ),
 ) -> None:
-    """Run GLITCH + post-filter pipeline and export findings."""
+    """Scan IaC files for security vulnerabilities using rule-based detection combined with neural inference."""
 
     debug = DebugLogger(debug_log)
 
@@ -174,11 +175,11 @@ def scan(
         })
 
         try:
-            # Suppress PLY warnings from puppetparser during GLITCH scan
+            # Suppress PLY warnings from puppetparser during rule-based detection
             with _SuppressPLYWarnings():
                 raw_detections = run_glitch(str(path), tech)
         except Exception as exc:  # pragma: no cover - defensive logging
-            console.print(f"[red]GLITCH execution failed: {exc}[/]")
+            console.print(f"[red]Rule-based detection failed: {exc}[/]")
             debug.log("error", {"stage": "glitch", "message": str(exc)})
             raise typer.Exit(code=2) from exc
 
@@ -187,11 +188,22 @@ def scan(
             "detections": [det.model_dump() for det in raw_detections],
         })
 
+        # Filter detections by selected rules
+        filtered_detections = [
+            det for det in raw_detections
+            if det.smell in selected_rules
+        ]
+        
+        if filtered_detections != raw_detections:
+            console.log(
+                f"Filtered to {len(filtered_detections)} detections matching rules: {selected_rules}"
+            )
+
         category_a: list[Detection] = []
         category_a_preds: list[Prediction] = []
         category_b: list[Detection] = []
 
-        for det in raw_detections:
+        for det in filtered_detections:
             needs_postfilter = bool(det.evidence.pop("postfilter", False))
             if needs_postfilter:
                 category_b.append(det)
@@ -202,11 +214,12 @@ def scan(
                 )
 
         console.log(
-            "GLITCH returned %s detections (accepted=%s, postfilter=%s)"
-            % (len(raw_detections), len(category_a), len(category_b))
+            "Rule-based detection found %s issues (high-confidence=%s, neural-inference=%s)"
+            % (len(filtered_detections), len(category_a), len(category_b))
         )
         debug.log("detector_split", {
-            "total": len(raw_detections),
+            "total": len(filtered_detections),
+            "total_before_filter": len(raw_detections),
             "accepted": len(category_a),
             "postfilter": len(category_b),
         })
@@ -240,7 +253,7 @@ def scan(
             raise typer.Exit(code=2) from exc
 
         if is_stub_backend():
-            message = "falling back to deterministic stub model; install torch+transformers for codet5p-220m."
+            message = "falling back to deterministic stub model; install torch+transformers for IntelliSA-220m."
             console.print(f"[yellow]Warning:[/] {message}")
             _LOG.warning(message)
             debug.log("warning", {"stage": "postfilter", "message": "using stub model"})

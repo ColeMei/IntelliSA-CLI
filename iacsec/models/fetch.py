@@ -49,7 +49,7 @@ def fetch_model(name: str) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Download iacsec model assets")
-    parser.add_argument("model", nargs="?", default="codet5p-220m", help="Model name from models/registry.yaml")
+    parser.add_argument("model", nargs="?", default="IntelliSA-220m", help="Model name from models/registry.yaml")
     args = parser.parse_args(argv)
     return fetch_model(args.model)
 
