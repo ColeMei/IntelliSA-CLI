@@ -1,5 +1,5 @@
 name: "iacsec scan (pilot)"
-description: "Run GLITCH + LLM post-filter and emit SARIF"
+description: "IaC security scanner using rule-based detection and neural inference"
 inputs:
   path:
     description: "Path to scan"
@@ -9,7 +9,7 @@ inputs:
     default: "auto"
   postfilter:
     description: "Model name from models/registry.yaml"
-    default: "codet5p-220m"
+    default: "IntelliSA-220m"
   sarif_out:
     description: "Output SARIF path"
     default: "iacsec.sarif"

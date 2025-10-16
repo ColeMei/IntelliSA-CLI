@@ -24,7 +24,7 @@ pip install -U pip wheel
 pip install -e .
 
 # Fetch model weights
-python -m iacsec.models.fetch codet5p-220m
+python -m iacsec.models.fetch IntelliSA-220m
 
 # Scan a repository
 iacsec --path ./examples/sample_repo --tech auto --format sarif --out artifacts/scan.sarif
@@ -48,7 +48,7 @@ iacsec --path /path/to/repo --tech auto --format sarif --out artifacts/scan.sari
 - `--tech` - Technology: `auto|ansible|chef|puppet` (default: auto)
 - `--format` - Output format: `sarif`, `json`, `csv`, `table` (repeatable)
 - `--out` - Output path (directory or file prefix)
-- `--postfilter` - Model name from `models/registry.yaml` (default: codet5p-220m)
+- `--postfilter` - Model name from `models/registry.yaml` (default: IntelliSA-220m)
 - `--threshold` - Override model's default threshold
 - `--fail-on-high` - Exit code 1 only for high-severity findings
 - `--debug-log` - Write detailed trace to JSONL file
@@ -87,14 +87,14 @@ The stub model produces deterministic but artificial scores for testing only.
 ```
 ├── apps/cli/              # Typer CLI entrypoint
 ├── packages/
-│   ├── glitch_core/       # Vendored GLITCH (rule-based)
-│   ├── glitch_adapter/    # GLITCH to schema adapter
-│   ├── postfilter_llm/    # CodeT5p-220M (neural inference)
+│   ├── glitch_core/       # Rule-based detection engine
+│   ├── glitch_adapter/    # Detection adapter
+│   ├── postfilter_llm/    # IntelliSA-220m (neural inference)
 │   ├── exporters/         # SARIF / JSONL / CSV
 │   └── schema/            # Pydantic contracts
 ├── models/
 │   ├── registry.yaml      # Model index
-│   └── codet5p-220m/      # Champion model metadata
+│   └── IntelliSA-220m/    # Champion model metadata
 ├── tests/
 │   ├── unit/              # Module-level tests
 │   └── e2e/               # End-to-end tests

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "iacsec"
 version = "0.1.0"
-description = "GLITCH + LLM post-filter for IaC security (pilot)"
+description = "IntelliSA: IaC security scanner with rule-based detection and neural inference"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "Apache-2.0"} # adjust if needed
