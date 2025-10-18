@@ -271,8 +271,11 @@ def scan(
                 ],
             })
 
-        detections = category_a + category_b
-        predictions = category_a_preds + postfiltered
+        # Merge and sort by original detection order for deterministic output
+        det_pred_pairs = list(zip(category_a, category_a_preds)) + list(zip(category_b, postfiltered))
+        det_pred_pairs.sort(key=lambda pair: (pair[0].file, pair[0].line, pair[0].rule_id))
+        detections = [d for d, p in det_pred_pairs]
+        predictions = [p for d, p in det_pred_pairs]
 
         console.log(
             f"Post-filter complete: threshold={effective_threshold:.2f}"

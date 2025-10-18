@@ -77,6 +77,8 @@ def run_glitch(path: str, tech: str) -> List[Detection]:
                 seen_keys.add(key)
                 detections.append(detection)
 
+    # Sort for deterministic output across different file systems
+    detections.sort(key=lambda d: (d.file, d.line, d.rule_id))
     return detections
 
 

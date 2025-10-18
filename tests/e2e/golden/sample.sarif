@@ -20,17 +20,6 @@
               }
             },
             {
-              "id": "NO_INTEGRITY_CHECK",
-              "name": "NO_INTEGRITY_CHECK",
-              "shortDescription": {
-                "text": "Downloaded artifact lacks integrity check"
-              },
-              "properties": {
-                "smell": "no-integrity-check",
-                "tech": "ansible"
-              }
-            },
-            {
               "id": "HARDCODED_SECRET",
               "name": "HARDCODED_SECRET",
               "shortDescription": {
@@ -38,6 +27,17 @@
               },
               "properties": {
                 "smell": "hardcoded-secret",
+                "tech": "ansible"
+              }
+            },
+            {
+              "id": "NO_INTEGRITY_CHECK",
+              "name": "NO_INTEGRITY_CHECK",
+              "shortDescription": {
+                "text": "Downloaded artifact lacks integrity check"
+              },
+              "properties": {
+                "smell": "no-integrity-check",
                 "tech": "ansible"
               }
             },
@@ -84,33 +84,6 @@
           ]
         },
         {
-          "ruleId": "NO_INTEGRITY_CHECK",
-          "level": "warning",
-          "message": {
-            "text": "Downloaded artifact lacks integrity check \u2014 glitch-accepted"
-          },
-          "properties": {
-            "prediction": "TP",
-            "score": 1.0,
-            "evidence": {
-              "glitch_code": "sec_no_int_check",
-              "detail": "url:'http://insecure.example.com/app.tar.gz'"
-            }
-          },
-          "locations": [
-            {
-              "physicalLocation": {
-                "artifactLocation": {
-                  "uri": "roles/web/tasks/main.yml"
-                },
-                "region": {
-                  "startLine": 2
-                }
-              }
-            }
-          ]
-        },
-        {
           "ruleId": "HARDCODED_SECRET",
           "level": "error",
           "message": {
@@ -132,6 +105,33 @@
                 },
                 "region": {
                   "startLine": 5
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "NO_INTEGRITY_CHECK",
+          "level": "warning",
+          "message": {
+            "text": "Downloaded artifact lacks integrity check \u2014 glitch-accepted"
+          },
+          "properties": {
+            "prediction": "TP",
+            "score": 1.0,
+            "evidence": {
+              "glitch_code": "sec_no_int_check",
+              "detail": "url:'http://insecure.example.com/app.tar.gz'"
+            }
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "roles/web/tasks/main.yml"
+                },
+                "region": {
+                  "startLine": 2
                 }
               }
             }
