@@ -114,11 +114,11 @@
           "ruleId": "HARDCODED_SECRET",
           "level": "error",
           "message": {
-            "text": "Hard-coded secret detected \u2014 score<threshold"
+            "text": "Hard-coded secret detected \u2014 score>=threshold"
           },
           "properties": {
-            "prediction": "FP",
-            "score": 0.300635321773899,
+            "prediction": "TP",
+            "score": 0.818430772320385,
             "evidence": {
               "glitch_code": "sec_hard_secr",
               "detail": "password:''"
@@ -141,11 +141,11 @@
           "ruleId": "HTTP_NO_TLS",
           "level": "warning",
           "message": {
-            "text": "HTTP used without TLS \u2014 score>=threshold"
+            "text": "HTTP used without TLS \u2014 score<threshold"
           },
           "properties": {
-            "prediction": "TP",
-            "score": 0.5767085256228023,
+            "prediction": "FP",
+            "score": 0.2583172685279541,
             "evidence": {
               "glitch_code": "sec_https",
               "detail": "url:'http://insecure.example.com/app.tar.gz'"
