@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from iacsec.models.fetch import fetch_model
+from intellisa.models.fetch import fetch_model
 from packages.postfilter_llm.engine import ModelHandle
 
 
