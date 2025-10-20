@@ -17,7 +17,7 @@ def read_lines(path: Path):
 
 def test_sample_repo_scan_matches_golden(tmp_path, monkeypatch):
     runner = CliRunner()
-    out_sarif = tmp_path / "iacsec.sarif"
+    out_sarif = tmp_path / "intellisa.sarif"
     result = runner.invoke(
         app,
         [
@@ -34,7 +34,7 @@ def test_sample_repo_scan_matches_golden(tmp_path, monkeypatch):
             "--postfilter",
             "stub",
         ],
-        env={"IACSEC_MODEL_CACHE": str(tmp_path / "model_cache")},
+        env={"INTELLISA_MODEL_CACHE": str(tmp_path / "model_cache")},
     )
 
     # Blocking findings expected -> exit code 1

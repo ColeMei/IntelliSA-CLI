@@ -1,7 +1,7 @@
-# iacsec
+# intellisa
 
-> **Project Hub**: [IntelliSA](../00.IntelliSA)  
-> **This repository**: Production-ready CLI toolkit  
+> **Project Hub**: [IntelliSA](../00.IntelliSA)
+> **This repository**: Production-ready CLI toolkit
 > See the hub for paper materials, artifact manifest, and links to all repositories.
 
 ## Overview
@@ -10,7 +10,7 @@ IaC security scanner implementing the **IntelliSA** method
 
 **IntelliSA**: An Intelligent Analyzer for IaC Security Smell Detection via Rule and Neural Inference
 
-**Supported technologies**: Ansible, Chef, Puppet  
+**Supported technologies**: Ansible, Chef, Puppet
 **Output formats**: SARIF (GitHub Code Scanning), JSONL, CSV, console table
 
 ## Quick Start
@@ -24,10 +24,10 @@ pip install -U pip wheel
 pip install -e .
 
 # Fetch model weights
-python -m iacsec.models.fetch IntelliSA-220m
+python -m intellisa.models.fetch IntelliSA-220m
 
 # Scan a repository
-iacsec --path ./examples/sample_repo --tech auto --format sarif --out artifacts/scan.sarif
+intellisa --path ./examples/sample_repo --tech auto --format sarif --out artifacts/scan.sarif
 ```
 
 **Exit codes**:
@@ -39,7 +39,7 @@ iacsec --path ./examples/sample_repo --tech auto --format sarif --out artifacts/
 ## Usage
 
 ```bash
-iacsec --path /path/to/repo --tech auto --format sarif --out artifacts/scan.sarif
+intellisa --path /path/to/repo --tech auto --format sarif --out artifacts/scan.sarif
 ```
 
 **Common options**:
@@ -53,7 +53,7 @@ iacsec --path /path/to/repo --tech auto --format sarif --out artifacts/scan.sari
 - `--fail-on-high` - Exit code 1 only for high-severity findings
 - `--debug-log` - Write detailed trace to JSONL file
 
-Run `iacsec --help` for all options.
+Run `intellisa --help` for all options.
 
 ## How IntelliSA Works
 

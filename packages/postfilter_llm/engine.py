@@ -37,7 +37,7 @@ from packages.schema.models import Detection, Prediction
 _LOG = logging.getLogger(__name__)
 
 _REGISTRY_PATH = Path(__file__).resolve().parents[2] / "models" / "registry.yaml"
-_DEFAULT_CACHE = Path(os.environ.get("IACSEC_MODEL_CACHE", str(Path.home() / ".cache/iacsec")))
+_DEFAULT_CACHE = Path(os.environ.get("INTELLISA_MODEL_CACHE", str(Path.home() / ".cache/intellisa")))
 _LOADED_MODEL: Optional["ModelHandle"] = None
 
 
@@ -137,7 +137,7 @@ def predict(
 
     _BACKEND_MODE = "hf"
     tokenizer, classifier, device = artifacts
-    batch_size = int(os.environ.get("IACSEC_POSTFILTER_BATCH", "16")) or 16
+    batch_size = int(os.environ.get("INTELLISA_POSTFILTER_BATCH", "16")) or 16
     texts = [_format_detection(det) for det in detections]
 
     import torch
@@ -321,7 +321,7 @@ def _resolve_local_source(uri: str) -> Optional[Path]:
 
 
 def _cache_dir() -> Path:
-    override = os.environ.get("IACSEC_MODEL_CACHE")
+    override = os.environ.get("INTELLISA_MODEL_CACHE")
     if override:
         path = Path(override)
     else:

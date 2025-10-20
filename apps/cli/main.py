@@ -1,5 +1,5 @@
 
-"""Typer CLI entrypoint for iacsec scans."""
+"""Typer CLI entrypoint for intellisa scans."""
 from __future__ import annotations
 
 import json
@@ -140,7 +140,7 @@ def scan(
     format: List[str] = typer.Option(
         ["sarif"], "--format", help="Repeatable option: sarif, json, csv, table"
     ),
-    out: Path = typer.Option(Path("artifacts/iacsec"), "--out", help="Base output path for all formats (directory or filename prefix)"),
+    out: Path = typer.Option(Path("artifacts/intellisa"), "--out", help="Base output path for all formats (directory or filename prefix)"),
     fail_on_high: bool = typer.Option(
         False,
         "--fail-on-high",
@@ -414,13 +414,13 @@ def _export_results(
     # Determine if --out is a directory or file base
     if out.is_dir() or (not out.exists() and out.suffix == ""):
         # Directory: use default filename with appropriate extensions
-        base_name = "iacsec"
+        base_name = "intellisa"
         output_dir = out
     else:
         # File base: use the filename without extension as base
         base_name = out.stem
         output_dir = out.parent
-    
+
     # Ensure output directory exists
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -428,7 +428,7 @@ def _export_results(
         sarif_obj = to_sarif(
             detections,
             predictions,
-            tool_name="iacsec",
+            tool_name="intellisa",
             tool_version=str(model.version),
         )
         sarif_path = output_dir / f"{base_name}.sarif"
@@ -449,7 +449,7 @@ def _export_results(
         outputs["csv"] = csv_path
 
     if "table" in fmt_set:
-        table = Table(title="iacsec findings")
+        table = Table(title="intellisa findings")
         table.add_column("Rule")
         table.add_column("Severity")
         table.add_column("Prediction")

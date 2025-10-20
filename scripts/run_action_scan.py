@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-"""Helper entrypoint for composite action to invoke iacsec scan."""
+"""Helper entrypoint for composite action to invoke intellisa scan."""
 import os
 import shlex
 import subprocess
@@ -17,7 +17,7 @@ def _get_env(name: str) -> str:
 def main() -> int:
     formats = [f.strip() for f in os.environ.get("FORMATS", "").split(',') if f.strip()]
     cmd = [
-        "iacsec",
+        "intellisa",
         "--path", _get_env("INPUT_PATH"),
         "--tech", _get_env("INPUT_TECH"),
         "--postfilter", _get_env("INPUT_POSTFILTER"),

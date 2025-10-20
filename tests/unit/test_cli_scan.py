@@ -63,7 +63,7 @@ def test_scan_writes_sarif_and_json(monkeypatch, tmp_path):
 
     _touch_detection_file(tmp_path)
 
-    out_path = tmp_path / "iacsec.sarif"
+    out_path = tmp_path / "intellisa.sarif"
     result = runner.invoke(
         app,
         [

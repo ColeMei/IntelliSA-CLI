@@ -1,4 +1,4 @@
-# iacsec User Handbook
+# intellisa User Handbook
 
 > Complete operational guide for installation, usage, troubleshooting, and CI/CD integration.
 
@@ -49,28 +49,28 @@ See [PyTorch installation guide](https://pytorch.org/get-started/locally/) for o
 Download the champion model from Hugging Face:
 
 ```bash
-python -m iacsec.models.fetch codet5p-220m
+python -m intellisa.models.fetch codet5p-220m
 ```
 
 **What this does**:
 - Downloads model weights (`model.safetensors`) from HuggingFace
-- Caches to `~/.cache/iacsec/` by default
+- Caches to `~/.cache/intellisa/` by default
 - Verifies SHA256 checksum
 - Tests that transformers can load the model
 
 **Output**:
 ```
-[iacsec] Model 'codet5p-220m' ready (backend=hf).
-[iacsec] Cached weights at: /Users/you/.cache/iacsec/codet5p-220m_v1.0.0.safetensors
+[intellisa] Model 'codet5p-220m' ready (backend=hf).
+[intellisa] Cached weights at: /Users/you/.cache/intellisa/codet5p-220m_v1.0.0.safetensors
 ```
 
 ### Advanced: Custom Cache Location
 
-Set `IACSEC_MODEL_CACHE` to override the default cache directory:
+Set `INTELLISA_MODEL_CACHE` to override the default cache directory:
 
 ```bash
-export IACSEC_MODEL_CACHE=/mnt/fast-ssd/models
-python -m iacsec.models.fetch codet5p-220m
+export INTELLISA_MODEL_CACHE=/mnt/fast-ssd/models
+python -m intellisa.models.fetch codet5p-220m
 ```
 
 **When to use this**:
@@ -83,19 +83,19 @@ python -m iacsec.models.fetch codet5p-220m
 ### Basic Scan
 
 ```bash
-iacsec --path /path/to/repo --tech auto --format sarif --out scan.sarif
+intellisa --path /path/to/repo --tech auto --format sarif --out scan.sarif
 ```
 
 ### Scan Current Directory
 
 ```bash
-iacsec --format sarif --out artifacts/scan.sarif
+intellisa --format sarif --out artifacts/scan.sarif
 ```
 
 ### Multiple Output Formats
 
 ```bash
-iacsec \
+intellisa \
   --path ./my-infrastructure \
   --tech ansible \
   --format sarif \
@@ -112,7 +112,7 @@ iacsec \
 ### Console Table Output
 
 ```bash
-iacsec --path . --tech auto --format table
+intellisa --path . --tech auto --format table
 ```
 
 Displays findings in a terminal-friendly table (not written to file).
@@ -125,12 +125,12 @@ None (all have sensible defaults).
 
 ### Path Options
 
-**`--path PATH`**  
+**`--path PATH`**
 Directory or file to scan. Default: `.` (current directory)
 
 ```bash
-iacsec --path /home/user/ansible-playbooks
-iacsec --path single-file.yml
+intellisa --path /home/user/ansible-playbooks
+intellisa --path single-file.yml
 ```
 
 **`--tech {auto|ansible|chef|puppet}`**  
@@ -151,12 +151,12 @@ Output format(s). Repeatable. Default: `sarif`
 - `csv`: Spreadsheet-friendly summary
 - `table`: Terminal table (console only, not written to file)
 
-**`--out PATH`**  
-Base output path. Default: `artifacts/iacsec`
+**`--out PATH`**
+Base output path. Default: `artifacts/intellisa`
 
 If `--out` is a directory, outputs use default names:
 ```bash
---out artifacts/  →  artifacts/iacsec.sarif, artifacts/iacsec.jsonl
+--out artifacts/  →  artifacts/intellisa.sarif, artifacts/intellisa.jsonl
 ```
 
 If `--out` is a file prefix, extensions are appended:
@@ -166,28 +166,28 @@ If `--out` is a file prefix, extensions are appended:
 
 ### Post-Filter Options
 
-**`--postfilter MODEL_NAME`**  
+**`--postfilter MODEL_NAME`**
 Model from `models/registry.yaml`. Default: `codet5p-220m`
 
 ```bash
-iacsec --postfilter codet5p-220m-stub  # Deterministic stub for testing
+intellisa --postfilter codet5p-220m-stub  # Deterministic stub for testing
 ```
 
-**`--threshold FLOAT`**  
+**`--threshold FLOAT`**
 Override model's default threshold (0.0-1.0)
 
 ```bash
-iacsec --threshold 0.7  # Higher threshold = fewer FPs, more FNs
-iacsec --threshold 0.5  # Lower threshold = fewer FNs, more FPs
+intellisa --threshold 0.7  # Higher threshold = fewer FPs, more FNs
+intellisa --threshold 0.5  # Lower threshold = fewer FNs, more FPs
 ```
 
 ### Detection Options
 
-**`--rules RULE_IDS`**  
+**`--rules RULE_IDS`**
 Comma-separated rule IDs. Default: all rules
 
 ```bash
-iacsec --rules http,weak-crypto,hardcoded-secret
+intellisa --rules http,weak-crypto,hardcoded-secret
 ```
 
 **Available rules**:
@@ -216,14 +216,14 @@ With this flag:
 - Medium/low severity findings don't fail the scan
 
 ```bash
-iacsec --fail-on-high  # CI-friendly: only fail on critical issues
+intellisa --fail-on-high  # CI-friendly: only fail on critical issues
 ```
 
-**`--debug-log PATH`**  
+**`--debug-log PATH`**
 Write detailed trace to JSONL file
 
 ```bash
-iacsec --debug-log artifacts/debug.jsonl
+intellisa --debug-log artifacts/debug.jsonl
 ```
 
 **Debug log contents**:
@@ -250,7 +250,7 @@ Standard format for security tools. Upload to GitHub Code Scanning:
 ```json
 {
   "runs": [{
-    "tool": { "driver": { "name": "iacsec" } },
+    "tool": { "driver": { "name": "intellisa" } },
     "results": [{
       "ruleId": "HTTP_NO_TLS",
       "level": "warning",
@@ -309,14 +309,14 @@ Warning: falling back to deterministic stub model; install torch+transformers fo
 **Fix**:
 ```bash
 pip install torch transformers
-python -m iacsec.models.fetch codet5p-220m  # Re-verify
+python -m intellisa.models.fetch codet5p-220m  # Re-verify
 ```
 
 ### Model Fetch Fails
 
 **Symptom**:
 ```
-[iacsec] Failed to load model 'codet5p-220m': HTTP Error 404
+[intellisa] Failed to load model 'codet5p-220m': HTTP Error 404
 ```
 
 **Possible causes**:
@@ -330,11 +330,11 @@ python -m iacsec.models.fetch codet5p-220m  # Re-verify
 curl https://huggingface.co
 
 # Retry with verbose output
-python -m iacsec.models.fetch codet5p-220m
+python -m intellisa.models.fetch codet5p-220m
 
 # Use custom cache location if home directory has issues
-export IACSEC_MODEL_CACHE=/tmp/models
-python -m iacsec.models.fetch codet5p-220m
+export INTELLISA_MODEL_CACHE=/tmp/models
+python -m intellisa.models.fetch codet5p-220m
 ```
 
 ### GLITCH Parser Errors
@@ -343,7 +343,7 @@ python -m iacsec.models.fetch codet5p-220m
 
 **Check debug log**:
 ```bash
-iacsec --debug-log debug.jsonl --path .
+intellisa --debug-log debug.jsonl --path .
 grep "GLITCH parser failed" debug.jsonl
 ```
 
@@ -358,7 +358,7 @@ grep "GLITCH parser failed" debug.jsonl
 
 **Verify GLITCH is working**:
 ```bash
-iacsec --path examples/sample_repo --tech ansible --format table --debug-log debug.jsonl
+intellisa --path examples/sample_repo --tech ansible --format table --debug-log debug.jsonl
 ```
 
 Expected: 3-4 detections from sample repo.
@@ -386,16 +386,16 @@ jobs:
       - uses: actions/setup-python@v4
         with:
           python-version: '3.10'
-      
-      - name: Install iacsec
+
+      - name: Install intellisa
         run: |
           pip install -e .
           pip install torch transformers
-          python -m iacsec.models.fetch codet5p-220m
-      
+          python -m intellisa.models.fetch codet5p-220m
+
       - name: Scan IaC
         run: |
-          iacsec \
+          intellisa \
             --path . \
             --tech auto \
             --format sarif \
@@ -414,21 +414,21 @@ jobs:
         uses: actions/upload-artifact@v3
         if: always()
         with:
-          name: iacsec-results
+          name: intellisa-results
           path: artifacts/
 ```
 
 ### GitLab CI
 
 ```yaml
-iacsec_scan:
+intellisa_scan:
   image: python:3.10
   before_script:
     - pip install -e .
     - pip install torch --index-url https://download.pytorch.org/whl/cpu
-    - python -m iacsec.models.fetch codet5p-220m
+    - python -m intellisa.models.fetch codet5p-220m
   script:
-    - iacsec --path . --format sarif --format json --out scan --fail-on-high
+    - intellisa --path . --format sarif --format json --out scan --fail-on-high
   artifacts:
     reports:
       sast: scan.sarif
@@ -448,12 +448,12 @@ pipeline {
                 sh 'python3 -m venv .venv'
                 sh '. .venv/bin/activate && pip install -e .'
                 sh '. .venv/bin/activate && pip install torch transformers'
-                sh '. .venv/bin/activate && python -m iacsec.models.fetch codet5p-220m'
+                sh '. .venv/bin/activate && python -m intellisa.models.fetch codet5p-220m'
             }
         }
         stage('Scan') {
             steps {
-                sh '. .venv/bin/activate && iacsec --path . --format sarif --out scan.sarif --fail-on-high'
+                sh '. .venv/bin/activate && intellisa --path . --format sarif --out scan.sarif --fail-on-high'
             }
         }
     }
@@ -471,16 +471,16 @@ pipeline {
 
 - **Batch size**: Default 16 is optimal for CPU. Increase for GPU:
   ```bash
-  export IACSEC_POSTFILTER_BATCH=64
-  iacsec --path .
+  export INTELLISA_POSTFILTER_BATCH=64
+  intellisa --path .
   ```
 
-- **Cache models**: In CI, persist `~/.cache/iacsec/` between runs:
+- **Cache models**: In CI, persist `~/.cache/intellisa/` between runs:
   ```yaml
   - uses: actions/cache@v3
     with:
-      path: ~/.cache/iacsec
-      key: iacsec-models-${{ hashFiles('models/registry.yaml') }}
+      path: ~/.cache/intellisa
+      key: intellisa-models-${{ hashFiles('models/registry.yaml') }}
   ```
 
 ### Security
@@ -503,11 +503,11 @@ Default thresholds are calibrated for balanced precision/recall. Adjust per your
 
 Before production deployment:
 
-- [ ] `iacsec --help` runs without warnings
-- [ ] `python -m iacsec.models.fetch codet5p-220m` succeeds
+- [ ] `intellisa --help` runs without warnings
+- [ ] `python -m intellisa.models.fetch codet5p-220m` succeeds
 - [ ] Sample scan produces expected findings:
   ```bash
-  iacsec --path examples/sample_repo --tech ansible --format table
+  intellisa --path examples/sample_repo --tech ansible --format table
   ```
 - [ ] PyTorch and transformers installed (no stub warning)
 - [ ] CI pipeline caches model weights
