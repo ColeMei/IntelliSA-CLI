@@ -5,7 +5,7 @@
     {
       "tool": {
         "driver": {
-          "name": "iacsec",
+          "name": "intellisa",
           "version": "0.0.0",
           "rules": [
             {
